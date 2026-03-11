@@ -1,0 +1,27 @@
+# MBR Slide Generator - Project TODO
+
+- [x] Database schema: data_sources, pillar_configs, mbr_generations, generation_logs
+- [x] Server routes: data sources CRUD, pillar management, generation workflow
+- [x] Google Sheets integration: fetch SF Main Expense Data for pillar/team/year/month values
+- [x] Google Sheets integration: fetch Horizon Content Calendar for launch schedule
+- [x] Google Docs integration: read MBR Planning Doc content
+- [x] Google Slides integration: read template structure (1EV76g3VtRF2uwxIoaBnNbEnY74x3X8RMA0HAGGcs1sA)
+- [x] Google Slides integration: create new presentations in pillar folders
+- [x] AI commentary generation from planning doc inputs using LLM
+- [x] Frontend: Dashboard home page with generation overview
+- [x] Frontend: Data Sources configuration page
+- [x] Frontend: New MBR Generation wizard (pillar, month, data preview, generate)
+- [x] Frontend: MBR History page with links to generated decks
+- [x] Frontend: Pillar/team management settings
+- [x] Pre-populate fields from SF Main Expense Data by pillar/team/year/month
+- [x] MBR deck history tracking with Google Drive folder links
+- [x] Generation workflow: data preview, validation, and slide creation
+- [x] Unit tests for core server procedures
+- [x] Output folder integration: parent folder 1XXg9R7ctvralay50uh5Ei1PBMI1pgJ_V with year subfolders (2026-2028)
+- [x] Folder creation prompt: if no output folder exists, ask user where/what folder to create
+- [x] Input Mode 1: Auto-generate from Project Name selection (from SF Main Expense Data)
+- [x] Input Mode 2: Manual entry of slide content fields
+- [x] Input Mode 3: AI Chat mode - share details/links, AI generates slide content
+- [x] Project Name picker with auto-population of all related expense/budget fields
+- [x] AI chat interface for conversational slide content creation
+- [ ] Push code to GitHub repo ikosoymeta/MBR-SLides-Generator after each checkpoint
