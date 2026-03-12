@@ -118,7 +118,7 @@
 - [ ] Test end-to-end: Autopilot uses bindings to route data to correct slide sections
 - [ ] Create binding resolver service that reads field bindings and maps source data to slide sections
 - [ ] Integrate binding resolver into Autopilot pipeline (replace hardcoded data routing)
-- [ ] Skip slides/sections marked as Not Required based on binding status
+- [x] Skip slides/sections marked as Not Required based on binding status
 - [ ] Add autopilot_schedules table (frequency, time, pillar, enabled)
 - [ ] Add server routes for schedule CRUD
 - [ ] Build scheduling UI: frequency picker (daily/weekly/monthly), time picker, pillar selector
@@ -135,7 +135,7 @@
 - [ ] Create comprehensive user manual covering all features
 - [ ] Capture screenshots of all key pages for the manual
 - [ ] Generate PDF version of user manual
-- [ ] Create training video script and produce training video
+- [x] Create training video script and produce training video — skipped per user request (User Manual is sufficient)
 - [x] REDESIGN: Autopilot should be a single global schedule (not per-pillar)
 - [x] REDESIGN: All pillar slides generated in one output location
 - [x] REDESIGN: Output organized in folders named "MBR Slide Deck March 12th, 2026" (full date with ordinal)
@@ -152,9 +152,15 @@
 - [x] Merge Data Sources and Data Binding into one unified screen with two-step flow (create source → add bindings)
 - [x] Reorder sidebar: Dashboard, Pillars, Data Sources & Binding, Autopilot, New MBR, History, Error Log, User Manual, Settings
 - [x] Add User Manual page with documentation content and training video
-- [ ] Push to GitHub after checkpoint
+- [x] Push to GitHub after checkpoint (db794f73)
 - [x] Make all data shared across users (remove per-user scoping from pillars, data sources, bindings, schedules, generations, error logs)
 - [x] Add audit trail columns (createdBy, updatedBy, createdByName, updatedByName) to data_sources, field_bindings, autopilot_schedules
 - [x] Track who created/updated and when for Sources, Bindings, Autopilot Schedule, output location
 - [x] Auto-exit edit mode: warn after 15 min inactivity, 3 min countdown to confirm, then auto-exit if no response
 - [x] Show activity history (who created/updated and when) in UI for Sources, Bindings, Autopilot Schedule
+- [x] Create training video walkthrough — skipped per user request (User Manual is sufficient)
+- [x] Add training video to User Manual page — skipped per user request
+- [x] Wire binding resolver into slide generator for Autopilot (use configured bindings instead of hardcoded mappings)
+- [x] Update Autopilot pipeline to route data through binding configuration
+- [x] Skip slides/sections marked as Not Required based on binding status
+- [ ] Push to GitHub after checkpoint

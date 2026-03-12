@@ -11,6 +11,7 @@ import { runAutopilotCollection } from "./services/autopilot";
 import { GOOGLE_IDS, PILLAR_TEAMS } from "../shared/types";
 import { invokeLLM } from "./_core/llm";
 import { listErrorLogs as listErrorLogsSvc, getErrorSummary, resolveError } from "./services/errorLogger";
+import { resolveBindings } from "./services/bindingResolver";
 
 export const appRouter = router({
   system: systemRouter,
@@ -457,6 +458,15 @@ export const appRouter = router({
         });
 
         try {
+          // Resolve data bindings for this pillar (if configured)
+          let resolved;
+          try {
+            resolved = await resolveBindings(input.pillarConfigId);
+          } catch (e) {
+            // Bindings are optional — continue without them
+            console.log(`[Generate] No bindings resolved for pillar ${input.pillarConfigId}:`, (e as Error).message);
+          }
+
           // Run generation
           const result = await generateMbrDeck({
             pillarName: input.pillarName,
@@ -469,6 +479,7 @@ export const appRouter = router({
             customTitle: input.customTitle,
             manualContent: input.manualContent,
             selectedSlides: input.selectedSlides,
+            resolvedBindings: resolved,
           });
 
           // Update generation record

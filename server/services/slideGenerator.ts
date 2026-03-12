@@ -32,6 +32,7 @@ import {
 } from "./google";
 import { GOOGLE_IDS } from "../../shared/types";
 import type { ExpenseRecord, LaunchScheduleItem, PlanningDocContent } from "../../shared/types";
+import type { ResolvedBindings } from "./bindingResolver";
 
 // ─── Public types ─────────────────────────────────────────────────
 
@@ -46,6 +47,8 @@ export interface GenerationInput {
   customTitle?: string;
   /** Which template slides to include (by index). If omitted, all slides are included. */
   selectedSlides?: number[];
+  /** Resolved bindings from the Data Binding matrix — overrides default data sources */
+  resolvedBindings?: ResolvedBindings;
   /** Optional: pre-filled slide content from manual entry or AI chat */
   manualContent?: {
     executiveSummary?: string;
@@ -204,6 +207,54 @@ export async function generateMbrDeck(input: GenerationInput): Promise<Generatio
   // Use manual content overrides if provided
   if (input.manualContent?.executiveSummary) {
     executiveSummary = input.manualContent.executiveSummary;
+  }
+
+  // Use resolved bindings to build executive summary if available
+  if (input.resolvedBindings?.executiveSummary && !executiveSummary) {
+    const rb = input.resolvedBindings.executiveSummary;
+    const parts: string[] = [];
+    if (rb.businessOutcome) parts.push(`\u2022 ${rb.businessOutcome}`);
+    if (rb.progressUpdates) parts.push(`\u2022 ${rb.progressUpdates}`);
+    if (rb.blockersRisks) parts.push(`\u2022 Risks: ${rb.blockersRisks}`);
+    if (rb.leadershipAsks) parts.push(`\u2022 Leadership Asks: ${rb.leadershipAsks}`);
+    if (parts.length > 0) executiveSummary = parts.join("\n");
+  }
+
+  // Merge resolved binding initiatives with manual/planning doc data
+  if (input.resolvedBindings?.initiatives && input.resolvedBindings.initiatives.length > 0 && !input.manualContent?.initiatives) {
+    input.manualContent = input.manualContent || {};
+    input.manualContent.initiatives = input.resolvedBindings.initiatives;
+  }
+
+  // Merge resolved binding launch items
+  if (input.resolvedBindings?.launchItems && input.resolvedBindings.launchItems.length > 0 && !input.manualContent?.launchItems) {
+    input.manualContent = input.manualContent || {};
+    input.manualContent.launchItems = input.resolvedBindings.launchItems;
+  }
+
+  // Merge resolved binding key dates
+  if (input.resolvedBindings?.keyDates && input.resolvedBindings.keyDates.length > 0 && !input.manualContent?.keyDates) {
+    input.manualContent = input.manualContent || {};
+    input.manualContent.keyDates = input.resolvedBindings.keyDates;
+  }
+
+  // Apply skipped slides from bindings (mark slides as not needed)
+  if (input.resolvedBindings?.skippedSlides && input.resolvedBindings.skippedSlides.length > 0) {
+    // Map slide type names to template indices
+    const slideTypeToIndex: Record<string, number> = {
+      title: 0, agenda: 1, exclusions: 2, executive_summary: 3,
+      initiatives_goals: 4, initiative_deep_dive: 5, launch_schedule: 6,
+      key_dates: 7, budget_update: 8, budget_reforecast: 9,
+      te: 10, appendix_header: 11, budget_detail: 12, appendix_content: 13, end_frame: 14,
+    };
+    const skipIndices = input.resolvedBindings.skippedSlides
+      .map(s => slideTypeToIndex[s])
+      .filter((i): i is number => i !== undefined);
+    if (skipIndices.length > 0 && !input.selectedSlides) {
+      // If no slides were explicitly selected, include all except skipped
+      const allIndices = Array.from({ length: slides.length }, (_, i) => i);
+      input.selectedSlides = allIndices.filter(i => !skipIndices.includes(i));
+    }
   }
 
   // Step 9: Build all slide update requests
