@@ -73,6 +73,32 @@ export const appRouter = router({
         await db.logActivity({ userId: ctx.user.id, userName: ctx.user.name || "Unknown", action: "deleted", entityType: "data_source", entityId: input.id });
         return { success: true };
       }),
+    /** Fetch column headers from a Google Sheet data source */
+    sheetColumns: protectedProcedure
+      .input(z.object({ dataSourceId: z.number(), sheetTab: z.string().optional() }))
+      .query(async ({ input }) => {
+        const source = await db.getDataSource(input.dataSourceId);
+        if (!source || source.sourceType !== "google_sheet") {
+          return { columns: [], sheetTab: "", tabs: [] as string[] };
+        }
+        const tab = input.sheetTab || source.sheetTab || undefined;
+        const [colResult, tabs] = await Promise.all([
+          google.fetchSheetColumns(source.googleFileId, tab),
+          google.fetchSheetTabs(source.googleFileId),
+        ]);
+        return { ...colResult, tabs };
+      }),
+    /** Fetch headings/sections from a Google Doc data source */
+    docSections: protectedProcedure
+      .input(z.object({ dataSourceId: z.number() }))
+      .query(async ({ input }) => {
+        const source = await db.getDataSource(input.dataSourceId);
+        if (!source || source.sourceType !== "google_doc") {
+          return { sections: [] as string[] };
+        }
+        const sections = await google.fetchDocSections(source.googleFileId);
+        return { sections };
+      }),
   }),
 
   // ─── Source-Slide Mappings ─────────────────────────────────────
@@ -212,6 +238,11 @@ export const appRouter = router({
         slideSectionType: z.enum(["string", "number", "date", "currency", "picklist", "boolean", "other"]).optional(),
         dataSourceId: z.number().nullable().optional(),
         transformNotes: z.string().optional(),
+        sourceReference: z.string().optional(),
+        isDynamic: z.boolean().optional(),
+        dynamicDateType: z.enum(["generation_date", "current_month_year", "previous_month_year", "current_quarter", "fiscal_year", "custom_format"]).optional(),
+        dynamicDateFormat: z.string().optional(),
+        hardcodedValue: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const existing = await db.listFieldBindings(input.pillarConfigId);
@@ -226,9 +257,14 @@ export const appRouter = router({
             slideSectionType: input.slideSectionType,
             dataSourceId: input.dataSourceId,
             transformNotes: input.transformNotes,
+            sourceReference: input.sourceReference,
+            isDynamic: input.isDynamic,
+            dynamicDateType: input.dynamicDateType,
+            dynamicDateFormat: input.dynamicDateFormat,
+            hardcodedValue: input.hardcodedValue,
             updatedByName: ctx.user.name || "Unknown",
           });
-          await db.logActivity({ userId: ctx.user.id, userName: ctx.user.name || "Unknown", action: "updated", entityType: "field_binding", entityId: match.id, entityName: `${input.slideType} → ${input.slideSection}` });
+          await db.logActivity({ userId: ctx.user.id, userName: ctx.user.name || "Unknown", action: "updated", entityType: "field_binding", entityId: match.id, entityName: `${input.slideType} \u2192 ${input.slideSection}` });
           return { success: true };
         }
         const result = await db.createFieldBinding({
@@ -236,17 +272,22 @@ export const appRouter = router({
           slideType: input.slideType,
           slideSection: input.slideSection,
           bindingStatus: input.bindingStatus,
-          sourceField: input.sourceField || '—',
+          sourceField: input.sourceField || '\u2014',
           sourceFieldType: input.sourceFieldType || 'string',
           slideSectionType: input.slideSectionType || 'string',
           syncDirection: 'source_to_slide',
           dataSourceId: input.dataSourceId ?? undefined,
           transformNotes: input.transformNotes,
+          sourceReference: input.sourceReference,
+          isDynamic: input.isDynamic ?? false,
+          dynamicDateType: input.dynamicDateType,
+          dynamicDateFormat: input.dynamicDateFormat,
+          hardcodedValue: input.hardcodedValue,
           userId: ctx.user.id,
           createdByName: ctx.user.name || "Unknown",
           updatedByName: ctx.user.name || "Unknown",
         });
-        await db.logActivity({ userId: ctx.user.id, userName: ctx.user.name || "Unknown", action: "created", entityType: "field_binding", entityId: result.id, entityName: `${input.slideType} → ${input.slideSection}` });
+        await db.logActivity({ userId: ctx.user.id, userName: ctx.user.name || "Unknown", action: "created", entityType: "field_binding", entityId: result.id, entityName: `${input.slideType} \u2192 ${input.slideSection}` });
         return result;
       }),
     delete: protectedProcedure

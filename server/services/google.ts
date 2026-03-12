@@ -558,6 +558,65 @@ export async function fetchSheetFromUrl(url: string, tab?: string): Promise<stri
   return fetchSheetValues(sheetId, range);
 }
 
+/** Fetch column headers (first row) from a Google Sheet */
+export async function fetchSheetColumns(
+  spreadsheetId: string,
+  sheetTab?: string
+): Promise<{ columns: string[]; sheetTab: string }> {
+  const range = sheetTab ? `'${sheetTab}'!1:1` : "A1:ZZ1";
+  try {
+    const rows = await fetchSheetValues(spreadsheetId, range);
+    const headers = (rows[0] || []).filter((h: string) => h.trim() !== "");
+    return { columns: headers, sheetTab: sheetTab || "Sheet1" };
+  } catch (err: any) {
+    console.error("[fetchSheetColumns] Error:", err.message);
+    return { columns: [], sheetTab: sheetTab || "Sheet1" };
+  }
+}
+
+/** Fetch sheet tab names from a Google Sheet */
+export async function fetchSheetTabs(
+  spreadsheetId: string
+): Promise<string[]> {
+  try {
+    const data = gwsJson("sheets spreadsheets get", {
+      spreadsheetId,
+      fields: "sheets.properties.title",
+    });
+    return (data.sheets || []).map((s: any) => s.properties?.title).filter(Boolean);
+  } catch (err: any) {
+    console.error("[fetchSheetTabs] Error:", err.message);
+    return [];
+  }
+}
+
+/** Fetch document headings/sections from a Google Doc */
+export async function fetchDocSections(
+  docId: string
+): Promise<string[]> {
+  try {
+    const data = gwsJson("docs documents get", { documentId: docId });
+    const headings: string[] = [];
+    for (const elem of data.body?.content || []) {
+      if (elem.paragraph) {
+        const style = elem.paragraph.paragraphStyle?.namedStyleType || "";
+        if (style.startsWith("HEADING")) {
+          let text = "";
+          for (const e of elem.paragraph.elements || []) {
+            if (e.textRun) text += e.textRun.content;
+          }
+          const trimmed = text.trim();
+          if (trimmed) headings.push(trimmed);
+        }
+      }
+    }
+    return headings;
+  } catch (err: any) {
+    console.error("[fetchDocSections] Error:", err.message);
+    return [];
+  }
+}
+
 export async function listExistingMbrDecks(pillarFolderId: string): Promise<
   { id: string; name: string; createdTime: string }[]
 > {

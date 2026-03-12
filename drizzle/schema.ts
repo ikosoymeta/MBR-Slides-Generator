@@ -157,6 +157,19 @@ export const fieldBindings = mysqlTable("field_bindings", {
   ]).default("source_to_slide").notNull(),
   /** Optional transformation or notes */
   transformNotes: text("transformNotes"),
+  /** Reference to the specific location in the source document (e.g., sheet tab, cell range, doc section heading) */
+  sourceReference: varchar("sourceReference", { length: 500 }),
+  /** Whether this binding uses a dynamic date value instead of a source field */
+  isDynamic: boolean("isDynamic").default(false).notNull(),
+  /** Dynamic date type when isDynamic is true */
+  dynamicDateType: mysqlEnum("dynamicDateType", [
+    "generation_date", "current_month_year", "previous_month_year",
+    "current_quarter", "fiscal_year", "custom_format"
+  ]),
+  /** Custom date format string when dynamicDateType is 'custom_format' (e.g., 'MMMM yyyy') */
+  dynamicDateFormat: varchar("dynamicDateFormat", { length: 255 }),
+  /** Hardcoded value for text/number fields — used by Autopilot instead of pulling from source */
+  hardcodedValue: text("hardcodedValue"),
   /** Binding status: connected (has source mapping), not_required (skipped), unbound (placeholder) */
   bindingStatus: mysqlEnum("bindingStatus", [
     "connected", "not_required", "unbound"

@@ -170,3 +170,11 @@
 - [x] REDESIGN: Allow users to view and edit bindings inline on source cards
 - [x] REDESIGN: Add Save and Cancel buttons for binding edits
 - [x] REDESIGN: Remove separate Bindings tab entirely — bindings live inside Sources
+- [x] UX: Add document field/section reference helpers to binding edit (sheet tab, cell range, page/section hints)
+- [x] UX: Show source document info (name, type, tab) in binding edit context
+- [x] UX: Add dynamic date option for date-type fields (e.g., "Current Month", "Generation Date", "Previous Month")
+- [x] UX: Add sourceReference field to binding schema for storing document location pointers
+- [x] UX: Add isDynamic flag and dynamicDateType to binding schema for dynamic date support
+- [x] UX: Improve binding edit layout to be more intuitive and easier to use
+- [x] UX: Fetch and suggest Google Sheet column names when connecting a binding to a sheet source
+- [x] UX: Add hardcoded value option for text/number fields for Autopilot deck generations

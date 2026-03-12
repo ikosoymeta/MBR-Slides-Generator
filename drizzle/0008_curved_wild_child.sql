@@ -1,0 +1,1 @@
+ALTER TABLE `field_bindings` ADD `hardcodedValue` text;

@@ -85,6 +85,13 @@ export async function listDataSources() {
   return db.select().from(dataSources).orderBy(desc(dataSources.updatedAt));
 }
 
+export async function getDataSource(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(dataSources).where(eq(dataSources.id, id)).limit(1);
+  return rows[0] || null;
+}
+
 export async function listDataSourcesByPillar(pillarConfigId: number) {
   const db = await getDb();
   if (!db) return [];
