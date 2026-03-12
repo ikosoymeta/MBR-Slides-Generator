@@ -217,13 +217,52 @@ export async function generateMbrDeck(input: GenerationInput): Promise<Generatio
   // Step 10: Apply updates in batches (Slides API has a limit per batch)
   t0 = Date.now();
   if (requests.length > 0) {
-    const BATCH_SIZE = 50;
-    for (let i = 0; i < requests.length; i += BATCH_SIZE) {
-      const batch = requests.slice(i, i + BATCH_SIZE);
+    // Separate replaceAllText (safe, global) from other requests (may fail on empty cells)
+    const globalReplacements = requests.filter((r: any) => r.replaceAllText);
+    const otherRequests = requests.filter((r: any) => !r.replaceAllText);
+
+    // Apply global replacements first (these never fail)
+    if (globalReplacements.length > 0) {
+      try {
+        await batchUpdatePresentation(copied.id, globalReplacements);
+      } catch (e: any) {
+        steps.push({ step: "apply_updates", status: "failed", message: `Global replacements: ${e.message}`, durationMs: Date.now() - t0 });
+      }
+    }
+
+    // Group deleteText+insertText pairs and apply in batches
+    // If a batch fails, retry individual pairs to skip empty-cell deletes
+    const BATCH_SIZE = 40;
+    for (let i = 0; i < otherRequests.length; i += BATCH_SIZE) {
+      const batch = otherRequests.slice(i, i + BATCH_SIZE);
       try {
         await batchUpdatePresentation(copied.id, batch);
       } catch (e: any) {
-        steps.push({ step: "apply_updates", status: "failed", message: `Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${e.message}`, durationMs: Date.now() - t0 });
+        // Batch failed - retry individual request pairs
+        steps.push({ step: "apply_updates", status: "failed", message: `Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${e.message} — retrying individually`, durationMs: Date.now() - t0 });
+        // Group into delete+insert pairs and try each pair
+        for (let j = 0; j < batch.length; j++) {
+          const req = batch[j];
+          if (req.deleteText) {
+            // Try delete+insert pair together, skip delete if it fails
+            const nextReq = batch[j + 1];
+            if (nextReq?.insertText) {
+              try {
+                await batchUpdatePresentation(copied.id, [req, nextReq]);
+              } catch {
+                // Delete failed (empty cell) - try just the insert
+                try {
+                  await batchUpdatePresentation(copied.id, [nextReq]);
+                } catch { /* skip this cell entirely */ }
+              }
+              j++; // skip the insert we already handled
+            }
+          } else if (req.insertText) {
+            try {
+              await batchUpdatePresentation(copied.id, [req]);
+            } catch { /* skip */ }
+          }
+        }
       }
     }
     steps.push({ step: "apply_updates", status: "completed", message: `Applied ${requests.length} updates`, durationMs: Date.now() - t0 });
@@ -405,11 +444,28 @@ function buildAllSlideRequests(
 
   // ── Slide 3: Executive Summary ──
   if (slides[3] && executiveSummary) {
-    const textBoxId = findElementId(slides[3], (elem) => {
+    // Try multiple strategies to find the exec summary text box
+    let textBoxId = findElementId(slides[3], (elem) => {
       if (elem.shape?.placeholder?.type !== "NONE" && elem.shape?.placeholder?.type) return false;
       const text = extractText(elem);
-      return text.includes("[") || text.trim() === "";
+      return text === "[...]" || text === "[\u2026]";
     });
+    // Fallback: look for any non-title, non-DRI text box
+    if (!textBoxId) {
+      textBoxId = findElementId(slides[3], (elem) => {
+        const text = extractText(elem);
+        if (!text || text.includes("DRI:") || text.includes("EXECUTIVE")) return false;
+        if (elem.shape?.placeholder?.type === "TITLE" || elem.shape?.placeholder?.type === "CENTERED_TITLE") return false;
+        return text.includes("[") || text.length < 10;
+      });
+    }
+    // Fallback 2: search inside groups
+    if (!textBoxId) {
+      textBoxId = findElementInGroups(slides[3], (elem) => {
+        const text = extractText(elem);
+        return text === "[...]" || text === "[\u2026]" || (text.includes("[") && text.length < 10);
+      });
+    }
     if (textBoxId) {
       requests.push(
         { deleteText: { objectId: textBoxId, textRange: { type: "ALL" } } },
@@ -419,6 +475,8 @@ function buildAllSlideRequests(
   }
 
   // ── Slide 4: Initiatives & Goals Table ──
+  // Col 0 is only 0.42 in wide — use just the letter prefix.
+  // Col 1 is 1.33 in — truncate outcome to ~60 chars.
   if (slides[4] && (planningDoc || input.manualContent?.initiatives)) {
     const tableId = findTableId(slides[4]);
     if (tableId) {
@@ -434,16 +492,17 @@ function buildAllSlideRequests(
       for (let i = 0; i < Math.min(initiatives.length, 4); i++) {
         const rowIdx = i + 2; // rows 2-5 are data rows (a, b, c, d)
         const init = initiatives[i];
-        // Col 0: Initiative letter + name
+        // Col 0: Just the letter — column is only 0.42" wide
         requests.push(
           deleteTableCellText(tableId, rowIdx, 0),
-          insertTableCellText(tableId, rowIdx, 0, `${String.fromCharCode(97 + i)}. ${init.name}`)
+          insertTableCellText(tableId, rowIdx, 0, `${String.fromCharCode(97 + i)}.`)
         );
-        // Col 1: Business Outcome
+        // Col 1: Business Outcome — truncate to fit 1.33" column
         if (init.outcome) {
+          const cleanOutcome = stripSourceAnnotations(init.outcome);
           requests.push(
             deleteTableCellText(tableId, rowIdx, 1),
-            insertTableCellText(tableId, rowIdx, 1, init.outcome)
+            insertTableCellText(tableId, rowIdx, 1, truncateText(cleanOutcome, 80))
           );
         }
       }
@@ -451,6 +510,8 @@ function buildAllSlideRequests(
   }
 
   // ── Slide 5: Initiative Deep Dive ──
+  // The Progress Updates box (y=2275350) and Blockers & Risks box (y=2898139)
+  // have only ~0.68" vertical gap, so text must be kept very short (1-2 lines each).
   if (slides[5]) {
     const firstInit = input.manualContent?.initiatives?.[0] ||
       (planningDoc?.initiatives[0] ? {
@@ -464,43 +525,46 @@ function buildAllSlideRequests(
       requests.push({
         replaceAllText: {
           containsText: { text: "[PROJECT / INITIATIVE #1]", matchCase: false },
-          replaceText: firstInit.name,
+          replaceText: stripSourceAnnotations(firstInit.name),
         },
       });
 
-      // Fill the "[...]" content box with updates
+      // Fill the "[...]" content box with outcome (keep to ~2 lines)
       const contentBoxId = findElementId(slides[5], (elem) => {
         const text = extractText(elem);
         return text === "[...]" || text === "[…]";
       });
       if (contentBoxId && firstInit.outcome) {
+        const cleanOutcome = stripSourceAnnotations(firstInit.outcome);
         requests.push(
           { deleteText: { objectId: contentBoxId, textRange: { type: "ALL" } } },
-          { insertText: { objectId: contentBoxId, text: firstInit.outcome, insertionIndex: 0 } }
+          { insertText: { objectId: contentBoxId, text: truncateText(cleanOutcome, 120), insertionIndex: 0 } }
         );
       }
 
-      // Fill progress updates
+      // Fill progress updates — keep to 1 line to avoid overlapping Blockers box
       const progressBoxId = findElementId(slides[5], (elem) => {
         const text = extractText(elem);
         return text.includes("Progress Updates:");
       });
       if (progressBoxId && firstInit.updates) {
+        const cleanUpdates = stripSourceAnnotations(firstInit.updates);
         requests.push(
           { deleteText: { objectId: progressBoxId, textRange: { type: "ALL" } } },
-          { insertText: { objectId: progressBoxId, text: `Progress Updates:\n${firstInit.updates}`, insertionIndex: 0 } }
+          { insertText: { objectId: progressBoxId, text: `Progress Updates:\n${truncateText(cleanUpdates, 100)}`, insertionIndex: 0 } }
         );
       }
 
-      // Fill risks
+      // Fill risks — keep to 1 line
       const risksBoxId = findElementId(slides[5], (elem) => {
         const text = extractText(elem);
         return text.includes("Blockers & Risks:");
       });
       if (risksBoxId && firstInit.risks) {
+        const cleanRisks = stripSourceAnnotations(firstInit.risks);
         requests.push(
           { deleteText: { objectId: risksBoxId, textRange: { type: "ALL" } } },
-          { insertText: { objectId: risksBoxId, text: `Blockers & Risks:\n${firstInit.risks}\n\nLeadership Asks:\n`, insertionIndex: 0 } }
+          { insertText: { objectId: risksBoxId, text: `Blockers & Risks:\n${truncateText(cleanRisks, 100)}\n\nLeadership Asks:`, insertionIndex: 0 } }
         );
       }
     }
@@ -572,6 +636,9 @@ function buildAllSlideRequests(
           byQ[key].push(`${item.date}: ${item.title}`);
         }
         fillLaunchTable(requests, tableId, byQ);
+      } else {
+        // No key dates provided — clear all placeholder cells
+        fillLaunchTable(requests, tableId, { Q1: [], Q2: [], H2: [] });
       }
     }
   }
@@ -686,18 +753,59 @@ function fillLaunchTable(
   for (let col = 0; col < 3; col++) {
     const items = byQ[quarters[col]] || [];
     for (let row = 1; row <= 4; row++) {
-      const text = items[row - 1] || "";
-      requests.push(
-        deleteTableCellText(tableId, row, col),
-        insertTableCellText(tableId, row, col, text || " ")
-      );
+      const rawText = items[row - 1] || "";
+      if (rawText) {
+        // Strip source annotations and truncate to fit table cells (~2.5" wide)
+        const cleanText = stripSourceAnnotations(rawText);
+        requests.push(
+          deleteTableCellText(tableId, row, col),
+          insertTableCellText(tableId, row, col, truncateText(cleanText, 60))
+        );
+      } else {
+        // Clear empty cells — remove template placeholder text like "● [DATE]:"
+        requests.push(
+          deleteTableCellText(tableId, row, col),
+          insertTableCellText(tableId, row, col, "\u2014") // em dash
+        );
+      }
     }
   }
+}
+
+/** Remove [SIMULATED], [Source: ...], [Real source: ...] annotations from text */
+function stripSourceAnnotations(text: string): string {
+  return text
+    .replace(/\[SIMULATED\]\s*/gi, "")
+    .replace(/\[Source:\s*[^\]]*\]/gi, "")
+    .replace(/\[Real source:\s*[^\]]*\]/gi, "")
+    .replace(/\[When connected[^\]]*\]/gi, "")
+    .replace(/\n\s*\n/g, "\n") // collapse double newlines
+    .trim();
+}
+
+/** Truncate text to maxLen characters, adding ellipsis if needed */
+function truncateText(text: string, maxLen: number): string {
+  // First, collapse to single line if it has newlines and is too long
+  const singleLine = text.replace(/\n/g, " ").replace(/\s+/g, " ").trim();
+  if (singleLine.length <= maxLen) return singleLine;
+  return singleLine.slice(0, maxLen - 1) + "\u2026"; // ellipsis
 }
 
 function findElementId(slide: any, predicate: (elem: any) => boolean): string | null {
   for (const elem of slide.pageElements || []) {
     if (predicate(elem)) return elem.objectId;
+  }
+  return null;
+}
+
+/** Search inside group elements for a matching shape */
+function findElementInGroups(slide: any, predicate: (elem: any) => boolean): string | null {
+  for (const elem of slide.pageElements || []) {
+    if (elem.group) {
+      for (const child of elem.group.children || []) {
+        if (predicate(child)) return child.objectId;
+      }
+    }
   }
   return null;
 }

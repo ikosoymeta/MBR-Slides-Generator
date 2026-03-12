@@ -67,3 +67,11 @@
 - [x] Autopilot: Review step - user reviews assembled content before final generation
 - [x] Autopilot: Auto-file to staging folder when no conflicts detected
 - [x] Autopilot: Output agents - Deck Generator, Planning Doc Writer (future), Fact Pack Builder (future)
+- [x] Generate POC 2026 March deck via Autopilot with simulated data
+- [x] Add simulated data annotations showing where real data would come from
+- [x] Save generated deck to Google Slides and add to history/dashboard with link
+- [x] BUG FIX: Initiative Deep Dive slide (slide 6) - Progress Updates and Blockers & Risks text boxes overlap
+- [x] BUG FIX: Initiatives & Goals table (slide 5) - text too long, overflows narrow columns
+- [x] BUG FIX: Launch Schedule table (slide 7) - empty cells show em dash instead of [DATE] placeholder
+- [x] BUG FIX: Key Dates table (slide 8) - empty cells show em dash instead of [DATE] placeholder
+- [x] Shorten simulated data annotations to fit within slide cell dimensions
