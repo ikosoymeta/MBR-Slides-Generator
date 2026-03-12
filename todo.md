@@ -148,3 +148,13 @@
 - [x] Add inline "Add New Pillar" option in Data Sources and Data Binding pillar dropdowns
 - [x] Remove "Unassigned" sources concept since pillar is now required
 - [x] BUG FIX: Green DRI box overlaps/blocks slide content text — repositioned to top-right corner, scaled down to 55%
+- [x] FIX: Source name input — verified it already saves on button click, not per-character
+- [x] Merge Data Sources and Data Binding into one unified screen with two-step flow (create source → add bindings)
+- [x] Reorder sidebar: Dashboard, Pillars, Data Sources & Binding, Autopilot, New MBR, History, Error Log, User Manual, Settings
+- [x] Add User Manual page with documentation content and training video
+- [ ] Push to GitHub after checkpoint
+- [x] Make all data shared across users (remove per-user scoping from pillars, data sources, bindings, schedules, generations, error logs)
+- [x] Add audit trail columns (createdBy, updatedBy, createdByName, updatedByName) to data_sources, field_bindings, autopilot_schedules
+- [x] Track who created/updated and when for Sources, Bindings, Autopilot Schedule, output location
+- [x] Auto-exit edit mode: warn after 15 min inactivity, 3 min countdown to confirm, then auto-exit if no response
+- [x] Show activity history (who created/updated and when) in UI for Sources, Bindings, Autopilot Schedule

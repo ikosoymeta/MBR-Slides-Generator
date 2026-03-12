@@ -26,8 +26,8 @@ export const appRouter = router({
 
    // ─── Data Sources ───────────────────────────────────────────
   dataSources: router({
-    list: protectedProcedure.query(({ ctx }) =>
-      db.listDataSources(ctx.user.id)
+    list: protectedProcedure.query(() =>
+      db.listDataSources()
     ),
     listByPillar: protectedProcedure
       .input(z.object({ pillarConfigId: z.number() }))
@@ -42,9 +42,11 @@ export const appRouter = router({
         category: z.enum(["planning_doc", "content_calendar", "budget_tracker", "expense_data", "template", "other"]),
         pillarConfigId: z.number(),
       }))
-      .mutation(({ ctx, input }) =>
-        db.createDataSource({ ...input, userId: ctx.user.id })
-      ),
+      .mutation(async ({ ctx, input }) => {
+        const result = await db.createDataSource({ ...input, userId: ctx.user.id, createdByName: ctx.user.name || "Unknown", updatedByName: ctx.user.name || "Unknown" });
+        await db.logActivity({ userId: ctx.user.id, userName: ctx.user.name || "Unknown", action: "created", entityType: "data_source", entityId: result.id, entityName: input.name });
+        return result;
+      }),
     update: protectedProcedure
       .input(z.object({
         id: z.number(),
@@ -57,15 +59,19 @@ export const appRouter = router({
         pillarConfigId: z.number().nullable().optional(),
         isActive: z.boolean().optional(),
       }))
-      .mutation(({ ctx, input }) => {
+      .mutation(async ({ ctx, input }) => {
         const { id, ...data } = input;
-        return db.updateDataSource(id, ctx.user.id, data);
+        await db.updateDataSource(id, { ...data, updatedByName: ctx.user.name || "Unknown" });
+        await db.logActivity({ userId: ctx.user.id, userName: ctx.user.name || "Unknown", action: "updated", entityType: "data_source", entityId: id, entityName: input.name || undefined });
+        return { success: true };
       }),
     delete: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .mutation(({ ctx, input }) =>
-        db.deleteDataSource(input.id, ctx.user.id)
-      ),
+      .mutation(async ({ ctx, input }) => {
+        await db.deleteDataSource(input.id);
+        await db.logActivity({ userId: ctx.user.id, userName: ctx.user.name || "Unknown", action: "deleted", entityType: "data_source", entityId: input.id });
+        return { success: true };
+      }),
   }),
 
   // ─── Source-Slide Mappings ─────────────────────────────────────
@@ -89,7 +95,11 @@ export const appRouter = router({
         ]),
         mappingNotes: z.string().optional(),
       }))
-      .mutation(({ input }) => db.createSlideMapping(input)),
+      .mutation(async ({ ctx, input }) => {
+        const result = await db.createSlideMapping({ ...input, userId: ctx.user.id, createdByName: ctx.user.name || "Unknown", updatedByName: ctx.user.name || "Unknown" });
+        await db.logActivity({ userId: ctx.user.id, userName: ctx.user.name || "Unknown", action: "created", entityType: "slide_mapping", entityId: result.id, entityName: `${input.slideType} mapping` });
+        return result;
+      }),
     update: protectedProcedure
       .input(z.object({
         id: z.number(),
@@ -103,13 +113,19 @@ export const appRouter = router({
         mappingNotes: z.string().optional(),
         isActive: z.boolean().optional(),
       }))
-      .mutation(({ input }) => {
+      .mutation(async ({ ctx, input }) => {
         const { id, ...data } = input;
-        return db.updateSlideMapping(id, data);
+        await db.updateSlideMapping(id, { ...data, updatedByName: ctx.user.name || "Unknown" });
+        await db.logActivity({ userId: ctx.user.id, userName: ctx.user.name || "Unknown", action: "updated", entityType: "slide_mapping", entityId: id });
+        return { success: true };
       }),
     delete: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .mutation(({ input }) => db.deleteSlideMapping(input.id)),
+      .mutation(async ({ ctx, input }) => {
+        await db.deleteSlideMapping(input.id);
+        await db.logActivity({ userId: ctx.user.id, userName: ctx.user.name || "Unknown", action: "deleted", entityType: "slide_mapping", entityId: input.id });
+        return { success: true };
+      }),
   }),
 
   // ─── Field Bindings ──────────────────────────────────────────
@@ -138,7 +154,7 @@ export const appRouter = router({
         transformNotes: z.string().optional(),
         bindingStatus: z.enum(["connected", "not_required", "unbound"]).default("connected"),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ ctx, input }) => {
         // Enforce one-binding-per-slide-section uniqueness within a pillar
         const existing = await db.listFieldBindings(input.pillarConfigId);
         const duplicate = existing.find(
@@ -149,7 +165,9 @@ export const appRouter = router({
             `A binding already exists for ${input.slideType} → ${input.slideSection}. Edit the existing binding instead.`
           );
         }
-        return db.createFieldBinding(input);
+        const result = await db.createFieldBinding({ ...input, userId: ctx.user.id, createdByName: ctx.user.name || "Unknown", updatedByName: ctx.user.name || "Unknown" });
+        await db.logActivity({ userId: ctx.user.id, userName: ctx.user.name || "Unknown", action: "created", entityType: "field_binding", entityId: result.id, entityName: `${input.slideType} → ${input.slideSection}` });
+        return result;
       }),
     update: protectedProcedure
       .input(z.object({
@@ -170,9 +188,11 @@ export const appRouter = router({
         dataSourceId: z.number().nullable().optional(),
         isActive: z.boolean().optional(),
       }))
-      .mutation(({ input }) => {
+      .mutation(async ({ ctx, input }) => {
         const { id, ...data } = input;
-        return db.updateFieldBinding(id, data);
+        await db.updateFieldBinding(id, { ...data, updatedByName: ctx.user.name || "Unknown" });
+        await db.logActivity({ userId: ctx.user.id, userName: ctx.user.name || "Unknown", action: "updated", entityType: "field_binding", entityId: id });
+        return { success: true };
       }),
     /** Upsert: create or update a binding for a specific slide+section within a pillar */
     upsert: protectedProcedure
@@ -192,22 +212,25 @@ export const appRouter = router({
         dataSourceId: z.number().nullable().optional(),
         transformNotes: z.string().optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ ctx, input }) => {
         const existing = await db.listFieldBindings(input.pillarConfigId);
         const match = existing.find(
           (b) => b.slideType === input.slideType && b.slideSection === input.slideSection
         );
         if (match) {
-          return db.updateFieldBinding(match.id, {
+          await db.updateFieldBinding(match.id, {
             bindingStatus: input.bindingStatus,
             sourceField: input.sourceField || match.sourceField,
             sourceFieldType: input.sourceFieldType,
             slideSectionType: input.slideSectionType,
             dataSourceId: input.dataSourceId,
             transformNotes: input.transformNotes,
+            updatedByName: ctx.user.name || "Unknown",
           });
+          await db.logActivity({ userId: ctx.user.id, userName: ctx.user.name || "Unknown", action: "updated", entityType: "field_binding", entityId: match.id, entityName: `${input.slideType} → ${input.slideSection}` });
+          return { success: true };
         }
-        return db.createFieldBinding({
+        const result = await db.createFieldBinding({
           pillarConfigId: input.pillarConfigId,
           slideType: input.slideType,
           slideSection: input.slideSection,
@@ -218,11 +241,20 @@ export const appRouter = router({
           syncDirection: 'source_to_slide',
           dataSourceId: input.dataSourceId ?? undefined,
           transformNotes: input.transformNotes,
+          userId: ctx.user.id,
+          createdByName: ctx.user.name || "Unknown",
+          updatedByName: ctx.user.name || "Unknown",
         });
+        await db.logActivity({ userId: ctx.user.id, userName: ctx.user.name || "Unknown", action: "created", entityType: "field_binding", entityId: result.id, entityName: `${input.slideType} → ${input.slideSection}` });
+        return result;
       }),
     delete: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .mutation(({ input }) => db.deleteFieldBinding(input.id)),
+      .mutation(async ({ ctx, input }) => {
+        await db.deleteFieldBinding(input.id);
+        await db.logActivity({ userId: ctx.user.id, userName: ctx.user.name || "Unknown", action: "deleted", entityType: "field_binding", entityId: input.id });
+        return { success: true };
+      }),
   }),
 
   // ─── Pillar Configs ───────────────────────────────────────────
@@ -349,10 +381,7 @@ export const appRouter = router({
 
   // ─── MBR Generation ──────────────────────────────────────────
   mbr: router({
-    list: protectedProcedure.query(({ ctx }) =>
-      db.listMbrGenerations(ctx.user.id)
-    ),
-    listAll: protectedProcedure.query(() =>
+    list: protectedProcedure.query(() =>
       db.listMbrGenerations()
     ),
     get: protectedProcedure
@@ -367,10 +396,9 @@ export const appRouter = router({
 
     delete: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .mutation(async ({ ctx, input }) => {
-        // Verify ownership
+      .mutation(async ({ input }) => {
         const gen = await db.getMbrGeneration(input.id);
-        if (!gen || gen.userId !== ctx.user.id) {
+        if (!gen) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Generation not found" });
         }
         await db.deleteMbrGeneration(input.id);
@@ -606,9 +634,9 @@ Always use professional business language suitable for executive presentations. 
 
   // ─── Autopilot Schedules ────────────────────────────────────────────
   autopilotSchedules: router({
-    /** Get the single global schedule for the current user */
-    get: protectedProcedure.query(async ({ ctx }) => {
-      const result = await db.getGlobalSchedule(ctx.user.id);
+    /** Get the single global schedule (shared across all users) */
+    get: protectedProcedure.query(async () => {
+      const result = await db.getGlobalSchedule();
       return result ?? null;
     }),
     /** Create or update the single global schedule */
@@ -635,34 +663,52 @@ Always use professional business language suitable for executive presentations. 
           outputFolderId: input.outputFolderId ?? null,
           folderNameFormat: input.folderNameFormat,
           isEnabled: input.isEnabled,
+          createdByName: ctx.user.name || "Unknown",
+          updatedByName: ctx.user.name || "Unknown",
         });
+        await db.logActivity({ userId: ctx.user.id, userName: ctx.user.name || "Unknown", action: "saved", entityType: "autopilot_schedule", entityName: `${input.frequency} schedule`, details: `Output folder format: ${input.folderNameFormat}` });
         return result;
       }),
     /** Toggle enabled/disabled */
     toggleEnabled: protectedProcedure
       .input(z.object({ isEnabled: z.boolean() }))
       .mutation(async ({ ctx, input }) => {
-        const schedule = await db.getGlobalSchedule(ctx.user.id);
+        const schedule = await db.getGlobalSchedule();
         if (!schedule) throw new TRPCError({ code: "NOT_FOUND", message: "No schedule found" });
-        await db.updateGlobalSchedule(schedule.id, { isEnabled: input.isEnabled });
+        await db.updateGlobalSchedule(schedule.id, { isEnabled: input.isEnabled, updatedByName: ctx.user.name || "Unknown" });
+        await db.logActivity({ userId: ctx.user.id, userName: ctx.user.name || "Unknown", action: input.isEnabled ? "enabled" : "disabled", entityType: "autopilot_schedule" });
         return { success: true };
       }),
     /** Delete the global schedule */
     delete: protectedProcedure
       .mutation(async ({ ctx }) => {
-        await db.deleteGlobalSchedule(ctx.user.id);
+        await db.deleteGlobalSchedule();
+        await db.logActivity({ userId: ctx.user.id, userName: ctx.user.name || "Unknown", action: "deleted", entityType: "autopilot_schedule" });
         return { success: true };
       }),
     /** Get last run info */
-    lastRun: protectedProcedure.query(async ({ ctx }) => {
-      const result = await db.getLastAutopilotRun(ctx.user.id);
+    lastRun: protectedProcedure.query(async () => {
+      const result = await db.getLastAutopilotRun();
       return result ?? null;
     }),
   }),
-
-  // ─── Error Logs ───────────────────────────────────────────────────
-  errorLogs: router({
+  // ─── Activity Log ──────────────────────────────────────────────────────
+  activityLog: router({
     list: protectedProcedure
+      .input(z.object({
+        entityType: z.string().optional(),
+        limit: z.number().default(50),
+        offset: z.number().default(0),
+      }).optional())
+      .query(({ input }) => db.listActivityLog({
+        entityType: input?.entityType,
+        limit: input?.limit || 50,
+        offset: input?.offset || 0,
+      })),
+  }),
+
+  // ─── Error Logs ───────────────────────────────────────────────────────
+  errorLogs: router({  list: protectedProcedure
       .input(z.object({
         severity: z.enum(["info", "warning", "error", "critical"]).optional(),
         source: z.string().optional(),

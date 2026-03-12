@@ -9,22 +9,22 @@ import Generate from "./pages/Generate";
 import History from "./pages/History";
 import DataSources from "./pages/DataSources";
 import Pillars from "./pages/Pillars";
-import Settings from "./pages/Settings";
-import DataBinding from "./pages/DataBinding";
 import ErrorLogs from "./pages/ErrorLogs";
 import Autopilot from "./pages/Autopilot";
+import UserManual from "./pages/UserManual";
+import Settings from "./pages/Settings";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/pillars" component={Pillars} />
+      <Route path="/data-sources" component={DataSources} />
+      <Route path="/autopilot" component={Autopilot} />
       <Route path="/generate" component={Generate} />
       <Route path="/history" component={History} />
-      <Route path="/data-sources" component={DataSources} />
-      <Route path="/pillars" component={Pillars} />
-      <Route path="/data-binding" component={DataBinding} />
       <Route path="/error-logs" component={ErrorLogs} />
-      <Route path="/autopilot" component={Autopilot} />
+      <Route path="/user-manual" component={UserManual} />
       <Route path="/settings" component={Settings} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />

@@ -31,6 +31,8 @@ export const dataSources = mysqlTable("data_sources", {
   ]).default("other").notNull(),
   isActive: boolean("isActive").default(true).notNull(),
   lastSyncedAt: timestamp("lastSyncedAt"),
+  createdByName: varchar("createdByName", { length: 255 }),
+  updatedByName: varchar("updatedByName", { length: 255 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -55,6 +57,9 @@ export const sourceSlideMappings = mysqlTable("source_slide_mappings", {
   /** Optional description of what data this mapping provides */
   mappingNotes: text("mappingNotes"),
   isActive: boolean("isActive").default(true).notNull(),
+  userId: int("userId"),
+  createdByName: varchar("createdByName", { length: 255 }),
+  updatedByName: varchar("updatedByName", { length: 255 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -157,6 +162,9 @@ export const fieldBindings = mysqlTable("field_bindings", {
     "connected", "not_required", "unbound"
   ]).default("connected").notNull(),
   isActive: boolean("isActive").default(true).notNull(),
+  userId: int("userId"),
+  createdByName: varchar("createdByName", { length: 255 }),
+  updatedByName: varchar("updatedByName", { length: 255 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -196,12 +204,30 @@ export const autopilotSchedules = mysqlTable("autopilot_schedules", {
   lastRunOutputUrl: varchar("lastRunOutputUrl", { length: 1000 }),
   /** Next scheduled run */
   nextRunAt: timestamp("nextRunAt"),
+  createdByName: varchar("createdByName", { length: 255 }),
+  updatedByName: varchar("updatedByName", { length: 255 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
 export type AutopilotSchedule = typeof autopilotSchedules.$inferSelect;
 export type InsertAutopilotSchedule = typeof autopilotSchedules.$inferInsert;
+
+/** Activity log for tracking all changes across the system */
+export const activityLog = mysqlTable("activity_log", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  userName: varchar("userName", { length: 255 }).notNull(),
+  action: varchar("action", { length: 50 }).notNull(),
+  entityType: varchar("entityType", { length: 50 }).notNull(),
+  entityId: int("entityId"),
+  entityName: varchar("entityName", { length: 500 }),
+  details: text("details"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ActivityLog = typeof activityLog.$inferSelect;
+export type InsertActivityLog = typeof activityLog.$inferInsert;
 
 /** Error logs for troubleshooting */
 export const errorLogs = mysqlTable("error_logs", {

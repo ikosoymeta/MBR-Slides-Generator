@@ -22,6 +22,8 @@ import { Separator } from "@/components/ui/separator";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useState, useEffect, useMemo } from "react";
+import { ActivityHistory } from "@/components/ActivityHistory";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import {
   Zap,
   Clock,
@@ -79,6 +81,7 @@ export default function Autopilot() {
   const [outputFolderId, setOutputFolderId] = useState("");
   const [folderNameFormat, setFolderNameFormat] = useState("MBR Slide Deck {month} {day}, {year}");
   const [hasChanges, setHasChanges] = useState(false);
+  const [showActivityLog, setShowActivityLog] = useState(false);
 
   const upsertMut = trpc.autopilotSchedules.upsert.useMutation({
     onSuccess: () => {
@@ -438,6 +441,24 @@ export default function Autopilot() {
             )}
           </CardContent>
         </Card>
+        {/* Activity Log */}
+        <div className="mt-2">
+          <button
+            className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors mb-3"
+            onClick={() => setShowActivityLog(!showActivityLog)}
+          >
+            <Clock className="h-4 w-4" />
+            Schedule Activity
+            {showActivityLog ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          </button>
+          {showActivityLog && (
+            <Card>
+              <CardContent className="p-4">
+                <ActivityHistory entityType="autopilot_schedule" limit={20} />
+              </CardContent>
+            </Card>
+          )}
+        </div>
       </div>
     </DashboardLayout>
   );

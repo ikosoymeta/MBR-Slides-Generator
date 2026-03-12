@@ -30,13 +30,13 @@ import {
   Database,
   Settings,
   Presentation,
-  Link2,
   AlertTriangle,
   CheckCircle2,
   Clock,
   Loader2,
   FileWarning,
   CalendarClock,
+  BookOpen,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -53,13 +53,13 @@ import { Badge } from "@/components/ui/badge";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
+  { icon: Presentation, label: "Pillars", path: "/pillars" },
+  { icon: Database, label: "Data Sources & Binding", path: "/data-sources" },
+  { icon: CalendarClock, label: "Autopilot", path: "/autopilot" },
   { icon: PlusCircle, label: "New MBR", path: "/generate" },
   { icon: History, label: "History", path: "/history" },
-  { icon: Database, label: "Data Sources", path: "/data-sources" },
-  { icon: Link2, label: "Data Binding", path: "/data-binding" },
-  { icon: Presentation, label: "Pillars", path: "/pillars" },
-  { icon: CalendarClock, label: "Autopilot", path: "/autopilot" },
   { icon: FileWarning, label: "Error Logs", path: "/error-logs" },
+  { icon: BookOpen, label: "User Manual", path: "/user-manual" },
   { icon: Settings, label: "Settings", path: "/settings" },
 ];
 

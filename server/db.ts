@@ -10,6 +10,7 @@ import {
   fieldBindings, InsertFieldBinding,
   autopilotSchedules, InsertAutopilotSchedule,
   errorLogs,
+  activityLog, InsertActivityLog,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -78,10 +79,10 @@ export async function getUserByOpenId(openId: string) {
 
 // ─── Data Sources ───────────────────────────────────────────────
 
-export async function listDataSources(userId: number) {
+export async function listDataSources() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(dataSources).where(eq(dataSources.userId, userId)).orderBy(desc(dataSources.updatedAt));
+  return db.select().from(dataSources).orderBy(desc(dataSources.updatedAt));
 }
 
 export async function listDataSourcesByPillar(pillarConfigId: number) {
@@ -97,18 +98,18 @@ export async function createDataSource(data: InsertDataSource) {
   return { id: result[0].insertId };
 }
 
-export async function updateDataSource(id: number, userId: number, data: Partial<InsertDataSource>) {
+export async function updateDataSource(id: number, data: Partial<InsertDataSource>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(dataSources).set(data).where(and(eq(dataSources.id, id), eq(dataSources.userId, userId)));
+  await db.update(dataSources).set(data).where(eq(dataSources.id, id));
 }
 
-export async function deleteDataSource(id: number, userId: number) {
+export async function deleteDataSource(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   // Also delete associated slide mappings
   await db.delete(sourceSlideMappings).where(eq(sourceSlideMappings.dataSourceId, id));
-  await db.delete(dataSources).where(and(eq(dataSources.id, id), eq(dataSources.userId, userId)));
+  await db.delete(dataSources).where(eq(dataSources.id, id));
 }
 
 // ─── Source-Slide Mappings ─────────────────────────────────────
@@ -270,22 +271,20 @@ export async function deleteFieldBinding(id: number) {
 
 // ─── Autopilot Schedules (Single Global Schedule) ──────────────────────
 
-/** Get the single global autopilot schedule for a user */
-export async function getGlobalSchedule(userId: number) {
+/** Get the single global autopilot schedule (shared across all users) */
+export async function getGlobalSchedule() {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select().from(autopilotSchedules)
-    .where(eq(autopilotSchedules.userId, userId))
     .limit(1);
   return result[0];
 }
 
-/** Upsert the single global schedule (one per user) */
+/** Upsert the single global schedule (shared across all users) */
 export async function upsertGlobalSchedule(data: InsertAutopilotSchedule) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const existing = await db.select().from(autopilotSchedules)
-    .where(eq(autopilotSchedules.userId, data.userId))
     .limit(1);
   if (existing.length > 0) {
     await db.update(autopilotSchedules).set(data).where(eq(autopilotSchedules.id, existing[0].id));
@@ -301,18 +300,18 @@ export async function updateGlobalSchedule(id: number, data: Partial<InsertAutop
   await db.update(autopilotSchedules).set(data).where(eq(autopilotSchedules.id, id));
 }
 
-export async function deleteGlobalSchedule(userId: number) {
+export async function deleteGlobalSchedule() {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.delete(autopilotSchedules).where(eq(autopilotSchedules.userId, userId));
+  // Delete all schedules (there should only be one)
+  await db.delete(autopilotSchedules);
 }
 
-/** Get the last autopilot run info for a user */
-export async function getLastAutopilotRun(userId: number) {
+/** Get the last autopilot run info (shared) */
+export async function getLastAutopilotRun() {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select().from(autopilotSchedules)
-    .where(eq(autopilotSchedules.userId, userId))
     .limit(1);
   return result[0];
 }
@@ -332,4 +331,26 @@ export async function resolveErrorLog(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(errorLogs).set({ isResolved: true }).where(eq(errorLogs.id, id));
+}
+
+// ─── Activity Log ───────────────────────────────────────────────
+
+export async function logActivity(data: InsertActivityLog) {
+  const db = await getDb();
+  if (!db) return;
+  try {
+    await db.insert(activityLog).values(data);
+  } catch (e) {
+    console.warn("[ActivityLog] Failed to log activity:", e);
+  }
+}
+
+export async function listActivityLog(opts?: { entityType?: string; limit?: number; offset?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  let query = db.select().from(activityLog).orderBy(desc(activityLog.createdAt));
+  if (opts?.entityType) {
+    query = query.where(eq(activityLog.entityType, opts.entityType)) as any;
+  }
+  return query.limit(opts?.limit || 50).offset(opts?.offset || 0);
 }
