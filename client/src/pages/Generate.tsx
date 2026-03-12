@@ -126,218 +126,304 @@ function SlidePreviewCard({
   const monthName = MONTHS[month - 1] || "March";
   const yearShort = year.slice(2);
 
+  // Template colors matching the actual Google Slides template
+  const ORANGE = "#E67E22";
+  const DARK_BG = "#2D3436";
+  const GREEN_DRI = "#5CD6A0";
+  const GRAY_HEADER = "#666666";
+  const LIGHT_BLUE_ROW = "#D6EAF8";
+  const GRAY_PANEL = "#D5D5D5";
+
+  const DriBox = ({ text }: { text: string }) => (
+    <div className="absolute top-1 right-1 px-1.5 py-0.5 text-[7px] font-medium text-gray-800 rounded-sm leading-tight text-center" style={{ background: GREEN_DRI, maxWidth: '40%' }}>
+      {text}
+    </div>
+  );
+
+  const OrangeTitle = ({ children }: { children: React.ReactNode }) => (
+    <div className="mb-0.5">
+      <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: ORANGE }}>{children}</p>
+      <div className="h-[1.5px] mt-0.5" style={{ background: ORANGE }} />
+    </div>
+  );
+
+  const SlideNumber = ({ num }: { num: number }) => (
+    <div className="absolute bottom-0.5 right-1 text-[7px] text-gray-400">{num}</div>
+  );
+
   const renderContent = () => {
     if (slideEntry.content) {
-      return <p className="text-xs text-foreground whitespace-pre-wrap">{slideEntry.content}</p>;
+      return (
+        <div className="relative h-full bg-white rounded">
+          <OrangeTitle>{slide.name}</OrangeTitle>
+          <p className="text-[8px] text-gray-800 whitespace-pre-wrap mt-1">{slideEntry.content}</p>
+        </div>
+      );
     }
     switch (slide.type) {
       case "title":
         return (
-          <div className="flex flex-col items-center justify-center h-full text-center gap-1 bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/30 dark:to-background rounded">
-            <p className="text-sm font-bold text-foreground">{pillar || "[PILLAR NAME]"}</p>
-            <p className="text-xs text-foreground">{year} Roadmap MBR</p>
-            <p className="text-[10px] text-muted-foreground mt-1">{monthName} {year}</p>
+          <div className="relative flex flex-col justify-center h-full rounded px-3 overflow-hidden" style={{ background: DARK_BG }}>
+            {/* Geometric watermark pattern */}
+            <div className="absolute right-0 top-0 bottom-0 w-1/2 opacity-10">
+              <svg viewBox="0 0 100 100" className="h-full w-full">
+                <polygon points="50,10 90,90 10,90" fill="none" stroke="white" strokeWidth="1" />
+                <polygon points="50,25 78,80 22,80" fill="none" stroke="white" strokeWidth="0.5" />
+                <text x="70" y="20" fill="white" fontSize="12" fontWeight="bold" transform="rotate(15,70,20)">R</text>
+                <text x="85" y="40" fill="white" fontSize="12" fontWeight="bold" transform="rotate(15,85,40)">E</text>
+                <text x="88" y="65" fill="white" fontSize="12" fontWeight="bold" transform="rotate(15,88,65)">A</text>
+                <text x="75" y="85" fill="white" fontSize="12" fontWeight="bold" transform="rotate(15,75,85)">L</text>
+              </svg>
+            </div>
+            <p className="text-xs font-extrabold text-white leading-tight" style={{ fontStretch: 'condensed' }}>
+              {pillar || "[PILLAR NAME]"}<br />{year} Roadmap MBR
+            </p>
+            <div className="h-[1.5px] my-1 w-full" style={{ background: '#3498DB' }} />
+            <p className="text-[9px] text-gray-300">{monthName} {year}</p>
+            <SlideNumber num={1} />
           </div>
         );
       case "agenda":
         return (
-          <div className="space-y-1">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-foreground">AGENDA</p>
-            <div className="space-y-0.5 text-[9px] text-muted-foreground">
-              <p>• Executive Summary</p>
-              <p>• Initiatives & Goals</p>
-              <p>• Launch Schedule</p>
-              <p>• Budget Update</p>
-              <p>• Appendix</p>
+          <div className="relative flex h-full rounded overflow-hidden">
+            {/* Left gray panel */}
+            <div className="w-[35%] flex items-center justify-center" style={{ background: GRAY_PANEL }}>
+              <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: ORANGE }}>AGENDA</p>
             </div>
+            {/* Right content */}
+            <div className="flex-1 flex flex-col justify-center pl-2 bg-white">
+              <div className="space-y-1">
+                {["Executive Summary", "Initiatives & Goals", "Launch Schedule", "Budget Update", "Appendix"].map((item) => (
+                  <div key={item} className="flex items-center gap-1">
+                    <div className="h-3 w-3 rounded-full bg-gray-400 flex items-center justify-center">
+                      <ChevronRight className="h-2 w-2 text-white" />
+                    </div>
+                    <span className="text-[8px] text-gray-700">{item}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <SlideNumber num={2} />
           </div>
         );
       case "exclusions":
         return (
-          <div className="space-y-1">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-foreground">THIS TEMPLATE WILL NOT INCLUDE</p>
-            <div className="space-y-0.5 text-[9px] text-muted-foreground">
-              <p>• DS Trend Lines / Deep Dives</p>
-              <p>• [...]</p>
+          <div className="relative h-full bg-white rounded p-2">
+            <OrangeTitle>THIS TEMPLATE WILL NOT INCLUDE</OrangeTitle>
+            <div className="mt-1 space-y-0.5 text-[8px] text-gray-800 font-medium">
+              <p>1. &nbsp;DS TREND LINES / DEEP DIVES</p>
+              <p>2. &nbsp;[...]</p>
             </div>
+            <SlideNumber num={3} />
           </div>
         );
       case "executive_summary":
         return (
-          <div className="space-y-1">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-foreground">EXECUTIVE SUMMARY</p>
-            <p className="text-xs text-foreground">{executiveSummary ? executiveSummary.substring(0, 150) + "..." : "[Content from S&O Leads via Google Doc]"}</p>
-            <p className="text-[8px] text-muted-foreground mt-1">DRI: S&O Leads (via Google Doc)</p>
+          <div className="relative h-full bg-white rounded p-2">
+            <OrangeTitle>EXECUTIVE SUMMARY</OrangeTitle>
+            <DriBox text="DRI: S&O Leads (via Google Doc)" />
+            <p className="text-[8px] text-gray-800 mt-1">{executiveSummary ? executiveSummary.substring(0, 120) + "..." : "[...]"}</p>
+            <SlideNumber num={4} />
           </div>
         );
       case "initiatives_goals":
         return (
-          <div className="space-y-1">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-foreground">INITIATIVES & GOALS</p>
-            <div className="border rounded text-[8px] overflow-hidden">
+          <div className="relative h-full bg-white rounded p-2">
+            <OrangeTitle>INITIATIVES & GOALS</OrangeTitle>
+            <DriBox text="DRI: Tiffany and Ryan (Progress vs Target from S&O leads)" />
+            <div className="text-[6px] overflow-hidden mt-1">
+              {/* Super header row */}
               <div className="grid grid-cols-6 gap-px">
-                {["", "", "Release Slate", "", "Performance", ""].map((h, i) => (
-                  <div key={i} className="bg-blue-100 dark:bg-blue-900/30 px-1 py-0.5 font-medium text-foreground text-center">{h}</div>
+                <div className="col-span-2" />
+                <div className="col-span-2 text-center font-bold text-white px-0.5 py-px" style={{ background: GRAY_HEADER }}>Release Slate</div>
+                <div className="col-span-2 text-center font-bold text-white px-0.5 py-px" style={{ background: GRAY_HEADER }}>Performance Measurement</div>
+              </div>
+              {/* Sub header row */}
+              <div className="grid grid-cols-6 gap-px">
+                {["Initiative", "Business Outcome", "Target", "Progress vs Target", "KPI Target", "Value vs Target"].map((h) => (
+                  <div key={h} className="text-center font-bold text-white px-0.5 py-px truncate" style={{ background: GRAY_HEADER }}>{h}</div>
                 ))}
               </div>
-              <div className="grid grid-cols-6 gap-px">
-                {["Initiative", "Business Outcome", "Target", "Progress", "KPI Target", "Value"].map((h) => (
-                  <div key={h} className="bg-muted/50 px-1 py-0.5 font-medium text-foreground text-center">{h}</div>
-                ))}
-              </div>
+              {/* Data rows */}
               {["a.", "b.", "c.", "d."].map((row) => (
-                <div key={row} className="grid grid-cols-6 gap-px">
-                  <div className="px-1 py-0.5 text-muted-foreground">{row}</div>
-                  {[1,2,3,4,5].map((c) => <div key={c} className="px-1 py-0.5 text-muted-foreground/30">—</div>)}
+                <div key={row} className="grid grid-cols-6 gap-px border-b border-dashed border-gray-400">
+                  <div className="px-0.5 py-0.5 font-bold text-gray-700">{row}</div>
+                  {[1,2,3,4,5].map((c) => (
+                    <div key={c} className="px-0.5 py-1" style={{ background: LIGHT_BLUE_ROW }} />
+                  ))}
                 </div>
               ))}
             </div>
-            <p className="text-[8px] text-muted-foreground">DRI: Tiffany & Ryan</p>
+            <SlideNumber num={5} />
           </div>
         );
       case "initiative_deep_dive":
         return (
-          <div className="space-y-1">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-foreground">[PROJECT / INITIATIVE #1]</p>
-            <div className="grid grid-cols-2 gap-1 text-[8px]">
-              <div className="border rounded p-1">
-                <p className="font-medium text-foreground">Business Outcome & Goal</p>
-                <p className="text-muted-foreground">[...]</p>
+          <div className="relative h-full bg-white rounded p-2">
+            <OrangeTitle>[PROJECT / INITIATIVE #1]</OrangeTitle>
+            <DriBox text="DRI: S&O Leads" />
+            <div className="grid grid-cols-2 gap-0.5 text-[7px] mt-1">
+              <div className="border border-gray-300 rounded-sm p-0.5">
+                <p className="font-bold text-gray-700">Business Outcome & Goal</p>
+                <p className="text-gray-500">[...]</p>
               </div>
-              <div className="border rounded p-1">
-                <p className="font-medium text-foreground">Progress Updates</p>
-                <p className="text-muted-foreground">[...]</p>
+              <div className="border border-gray-300 rounded-sm p-0.5">
+                <p className="font-bold text-gray-700">Progress Updates</p>
+                <p className="text-gray-500">[...]</p>
               </div>
-              <div className="border rounded p-1">
-                <p className="font-medium text-foreground">Blockers & Risks</p>
-                <p className="text-muted-foreground">[...]</p>
+              <div className="border border-gray-300 rounded-sm p-0.5">
+                <p className="font-bold text-gray-700">Blockers & Risks</p>
+                <p className="text-gray-500">[...]</p>
               </div>
-              <div className="border rounded p-1">
-                <p className="font-medium text-foreground">Leadership Asks</p>
-                <p className="text-muted-foreground">[...]</p>
+              <div className="border border-gray-300 rounded-sm p-0.5">
+                <p className="font-bold text-gray-700">Leadership Asks</p>
+                <p className="text-gray-500">[...]</p>
               </div>
             </div>
-            <p className="text-[8px] text-muted-foreground">DRI: S&O Leads (via Google Doc)</p>
+            <SlideNumber num={6} />
           </div>
         );
       case "launch_schedule":
         return (
-          <div className="space-y-1">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-foreground">LAUNCH SCHEDULE</p>
-            <div className="border rounded text-[8px] overflow-hidden">
+          <div className="relative h-full bg-white rounded p-2">
+            <OrangeTitle>LAUNCH SCHEDULE</OrangeTitle>
+            <DriBox text="DRI: S&O Leads" />
+            <div className="text-[7px] overflow-hidden mt-1">
               <div className="grid grid-cols-3 gap-px">
                 {[`Q1 '${yearShort}`, `Q2 '${yearShort}`, `H2 '${yearShort}`].map((q) => (
-                  <div key={q} className="bg-blue-100 dark:bg-blue-900/30 px-1 py-0.5 font-medium text-center text-foreground">{q}</div>
+                  <div key={q} className="text-center font-bold text-white px-0.5 py-0.5" style={{ background: GRAY_HEADER }}>{q}</div>
                 ))}
               </div>
               {[0,1,2,3].map((r) => (
-                <div key={r} className="grid grid-cols-3 gap-px">
+                <div key={r} className="grid grid-cols-3 gap-px border-b border-gray-200">
                   {[0,1,2].map((c) => (
-                    <div key={c} className="px-1 py-0.5 text-muted-foreground">[DATE]:</div>
+                    <div key={c} className="px-0.5 py-0.5 text-gray-500">[DATE]:</div>
                   ))}
                 </div>
               ))}
             </div>
-            <p className="text-[8px] text-muted-foreground">DRI: S&O Leads</p>
+            <SlideNumber num={7} />
           </div>
         );
       case "key_dates":
         return (
-          <div className="space-y-1">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-foreground">KEY DATES & MILESTONES</p>
-            <div className="border rounded text-[8px] overflow-hidden">
+          <div className="relative h-full bg-white rounded p-2">
+            <OrangeTitle>KEY DATES & MILESTONES</OrangeTitle>
+            <DriBox text="DRI: S&O Leads" />
+            <div className="text-[7px] overflow-hidden mt-1">
               <div className="grid grid-cols-3 gap-px">
                 {[`Q1 '${yearShort}`, `Q2 '${yearShort}`, `H2 '${yearShort}`].map((q) => (
-                  <div key={q} className="bg-blue-100 dark:bg-blue-900/30 px-1 py-0.5 font-medium text-center text-foreground">{q}</div>
+                  <div key={q} className="text-center font-bold text-white px-0.5 py-0.5" style={{ background: GRAY_HEADER }}>{q}</div>
                 ))}
               </div>
               {[0,1,2,3].map((r) => (
-                <div key={r} className="grid grid-cols-3 gap-px">
+                <div key={r} className="grid grid-cols-3 gap-px border-b border-gray-200">
                   {[0,1,2].map((c) => (
-                    <div key={c} className="px-1 py-0.5 text-muted-foreground">[DATE]:</div>
+                    <div key={c} className="px-0.5 py-0.5 text-gray-500">[DATE]:</div>
                   ))}
                 </div>
               ))}
             </div>
-            <p className="text-[8px] text-muted-foreground">DRI: S&O Leads</p>
+            <SlideNumber num={8} />
           </div>
         );
       case "budget_update":
         return (
-          <div className="space-y-1">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-foreground">BUDGET UPDATE</p>
-            <div className="flex items-end gap-0.5 h-12 px-1">
+          <div className="relative h-full bg-white rounded p-2">
+            <OrangeTitle>BUDGET UPDATE</OrangeTitle>
+            <DriBox text="DRI: Tiffany & Ryan" />
+            <div className="flex items-end gap-0.5 h-10 px-1 mt-1">
               {[35, 55, 45, 70, 60, 80, 50, 75].map((h, i) => (
-                <div key={i} className="flex-1 rounded-t" style={{ height: `${h}%`, background: i % 2 === 0 ? 'oklch(0.65 0.15 250)' : 'oklch(0.75 0.12 250 / 0.5)' }} />
+                <div key={i} className="flex-1 rounded-t" style={{ height: `${h}%`, background: i % 2 === 0 ? '#5B9BD5' : '#A9CCE3' }} />
               ))}
             </div>
-            <p className="text-[8px] text-muted-foreground">Linked Google Sheets chart • DRI: Tiffany & Ryan</p>
+            <p className="text-[7px] text-gray-400 mt-0.5">Linked Google Sheets chart</p>
+            <SlideNumber num={9} />
           </div>
         );
       case "budget_reforecast":
         return (
-          <div className="space-y-1">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-foreground">BUDGET UPDATE — REFORECAST</p>
-            <p className="text-[9px] text-muted-foreground">Reforecast comparison vs. original budget</p>
-            <p className="text-[8px] text-muted-foreground">DRI: Tiffany & Ryan</p>
+          <div className="relative h-full bg-white rounded p-2">
+            <OrangeTitle>BUDGET UPDATE — REFORECAST</OrangeTitle>
+            <DriBox text="DRI: Tiffany & Ryan" />
+            <p className="text-[8px] text-gray-500 mt-1">Reforecast comparison vs. original budget</p>
+            <SlideNumber num={10} />
           </div>
         );
       case "te":
         return (
-          <div className="space-y-1">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-foreground">T&E</p>
-            <p className="text-[9px] text-muted-foreground">Travel & Entertainment spend overview</p>
+          <div className="relative h-full bg-white rounded p-2">
+            <OrangeTitle>T&E</OrangeTitle>
+            <p className="text-[8px] text-gray-500 mt-1">Travel & Entertainment spend overview</p>
+            <SlideNumber num={11} />
           </div>
         );
       case "appendix_header":
         return (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-sm font-bold uppercase tracking-widest text-foreground">APPENDIX</p>
+          <div className="relative flex flex-col justify-center h-full rounded px-3 overflow-hidden" style={{ background: DARK_BG }}>
+            <div className="absolute right-0 top-0 bottom-0 w-1/2 opacity-10">
+              <svg viewBox="0 0 100 100" className="h-full w-full">
+                <polygon points="50,10 90,90 10,90" fill="none" stroke="white" strokeWidth="1" />
+              </svg>
+            </div>
+            <p className="text-sm font-extrabold uppercase tracking-widest text-white" style={{ fontStretch: 'condensed' }}>APPENDIX</p>
+            <div className="h-[1.5px] my-1 w-16" style={{ background: '#3498DB' }} />
+            <SlideNumber num={12} />
           </div>
         );
       case "budget_detail":
         return (
-          <div className="space-y-1">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-foreground">BUDGET UPDATE</p>
-            <div className="border rounded text-[7px] overflow-hidden">
-              <div className="grid grid-cols-5 gap-px">
-                {["Team", "Initiative", "QTD Actuals", "Forecast", "Delta"].map((h) => (
-                  <div key={h} className="bg-blue-100 dark:bg-blue-900/30 px-0.5 py-0.5 font-medium text-foreground text-center truncate">{h}</div>
+          <div className="relative h-full bg-white rounded p-2">
+            <OrangeTitle>BUDGET UPDATE</OrangeTitle>
+            <div className="text-[6px] overflow-hidden mt-1">
+              <div className="grid grid-cols-7 gap-px">
+                {["Team", "Initiative", "QTD Actuals", "Forecast", "Delta", "% Forecast", "Notes"].map((h) => (
+                  <div key={h} className="text-center font-bold text-white px-0.5 py-px truncate" style={{ background: GRAY_HEADER }}>{h}</div>
                 ))}
               </div>
-              {[0,1,2].map((r) => (
-                <div key={r} className="grid grid-cols-5 gap-px">
-                  {[0,1,2,3,4].map((c) => (
-                    <div key={c} className="px-0.5 py-0.5 text-muted-foreground/30 text-center">—</div>
+              {[0,1,2,3].map((r) => (
+                <div key={r} className="grid grid-cols-7 gap-px border-b border-gray-200">
+                  {[0,1,2,3,4,5,6].map((c) => (
+                    <div key={c} className="px-0.5 py-0.5 text-center" style={{ background: r % 2 === 0 ? LIGHT_BLUE_ROW : 'white' }}>
+                      <span className="text-gray-400">—</span>
+                    </div>
                   ))}
                 </div>
               ))}
+              <div className="grid grid-cols-7 gap-px border-t-2 border-gray-600">
+                <div className="col-span-2 px-0.5 py-0.5 font-bold text-gray-700">TOTAL</div>
+                {[0,1,2,3,4].map((c) => (
+                  <div key={c} className="px-0.5 py-0.5 text-center text-gray-400">—</div>
+                ))}
+              </div>
             </div>
-            {projectData ? (
-              <p className="text-[8px] text-foreground">Total Funding: ${projectData.summary?.totalFunding?.toLocaleString() || "—"}</p>
-            ) : (
-              <p className="text-[8px] text-muted-foreground">Full Year Forecast + Quarterly breakdown</p>
-            )}
+            <SlideNumber num={13} />
           </div>
         );
       case "appendix_content":
         return (
-          <div className="space-y-1">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-foreground">&lt;Appendix as required&gt;</p>
-            <p className="text-[9px] text-muted-foreground">Additional reference material</p>
+          <div className="relative h-full bg-white rounded p-2">
+            <OrangeTitle>&lt;Appendix as required&gt;</OrangeTitle>
+            <p className="text-[8px] text-gray-500 mt-1">Additional reference material</p>
+            <SlideNumber num={14} />
           </div>
         );
       case "end_frame":
         return (
-          <div className="flex items-center justify-center h-full bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/30 dark:to-background rounded">
-            <p className="text-xs text-muted-foreground">End</p>
+          <div className="relative flex items-center justify-center h-full rounded overflow-hidden" style={{ background: DARK_BG }}>
+            <div className="absolute right-0 top-0 bottom-0 w-1/2 opacity-10">
+              <svg viewBox="0 0 100 100" className="h-full w-full">
+                <polygon points="50,10 90,90 10,90" fill="none" stroke="white" strokeWidth="1" />
+              </svg>
+            </div>
+            <SlideNumber num={15} />
           </div>
         );
     }
     // Fallback for any unhandled type
     return (
-      <div className="flex items-center justify-center h-full">
-        <p className="text-xs text-muted-foreground">{(slide as any).description}</p>
+      <div className="flex items-center justify-center h-full bg-white rounded">
+        <p className="text-xs text-gray-500">{(slide as any).description}</p>
       </div>
     );
   };
@@ -349,7 +435,7 @@ function SlidePreviewCard({
         <span className="text-xs font-medium text-foreground truncate">{slide.name}</span>
         {slide.required && <Badge variant="secondary" className="text-[9px] px-1 py-0 ml-auto">Required</Badge>}
       </div>
-      <div className="aspect-video p-3 bg-background">{renderContent()}</div>
+      <div className="aspect-video p-1 bg-gray-100">{renderContent()}</div>
       <div className="px-3 py-1 border-t bg-muted/30">
         <p className="text-[9px] text-muted-foreground truncate">{slide.dataSource}</p>
       </div>
@@ -661,6 +747,7 @@ export default function Generate() {
                 <span className="text-sm text-muted-foreground">Slides</span>
                 <Badge>{generationResult.slideCount} slides</Badge>
               </div>
+              <Separator />
               {generationResult.presentationUrl && (
                 <Button
                   className="w-full"
@@ -670,6 +757,17 @@ export default function Generate() {
                   Open in Google Slides (Editable)
                 </Button>
               )}
+              {outputFolderId && (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => window.open(`https://drive.google.com/drive/folders/${outputFolderId}`, "_blank")}
+                >
+                  <FolderOpen className="h-4 w-4 mr-2" />
+                  Open Output Folder in Google Drive
+                </Button>
+              )}
+              <Separator />
               <div className="flex gap-2">
                 <Button variant="outline" className="flex-1" onClick={() => {
                   setCurrentStep("configure");
@@ -759,6 +857,21 @@ export default function Generate() {
                     onCreateFolder={handleCreateFolder}
                     isCreating={createFolderMutation.isPending}
                   />
+                  {outputFolderId && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                          onClick={() => window.open(`https://drive.google.com/drive/folders/${outputFolderId}`, "_blank")}
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Open folder in Google Drive</TooltipContent>
+                    </Tooltip>
+                  )}
                 </div>
                 <div className="flex-1" />
                 <Input

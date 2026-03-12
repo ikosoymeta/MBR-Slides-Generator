@@ -54,3 +54,7 @@
 - [x] Slide previews should match the actual Google Slides template layout/content
 - [x] Launch date field should be a date picker instead of text input
 - [x] BUG FIX: Next: Build Slides button click intercepted by Preview mode banner (z-index fix)
+- [ ] BUG FIX: Generated slides use wrong theme/layout - must copy from actual Google Slides template instead of creating blank slides
+- [x] Slide preview cards should visually match the actual Google Slides template theme (dark title, orange headers, green DRI boxes, etc.)
+- [x] Add link to the output folder where MBR deck will be created
+- [x] Add link to access the generated MBR deck after creation
