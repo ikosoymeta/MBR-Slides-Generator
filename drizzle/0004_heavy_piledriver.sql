@@ -1,0 +1,1 @@
+ALTER TABLE `field_bindings` MODIFY COLUMN `sourceFieldType` enum('string','number','date','currency','option','boolean','url','graph_aggregator','other') NOT NULL DEFAULT 'string';

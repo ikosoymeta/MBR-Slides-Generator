@@ -1,0 +1,1 @@
+ALTER TABLE `field_bindings` ADD `bindingStatus` enum('connected','not_required','unbound') DEFAULT 'connected' NOT NULL;

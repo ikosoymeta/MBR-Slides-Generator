@@ -131,7 +131,7 @@ export const fieldBindings = mysqlTable("field_bindings", {
   sourceField: varchar("sourceField", { length: 500 }).notNull(),
   /** The data type of the source field */
   sourceFieldType: mysqlEnum("sourceFieldType", [
-    "string", "number", "date", "currency", "option", "boolean", "url", "other"
+    "string", "number", "date", "currency", "option", "boolean", "url", "graph_aggregator", "other"
   ]).default("string").notNull(),
   /** Which template slide this binds to */
   slideType: mysqlEnum("slideType", [
@@ -152,6 +152,10 @@ export const fieldBindings = mysqlTable("field_bindings", {
   ]).default("source_to_slide").notNull(),
   /** Optional transformation or notes */
   transformNotes: text("transformNotes"),
+  /** Binding status: connected (has source mapping), not_required (skipped), unbound (placeholder) */
+  bindingStatus: mysqlEnum("bindingStatus", [
+    "connected", "not_required", "unbound"
+  ]).default("connected").notNull(),
   isActive: boolean("isActive").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

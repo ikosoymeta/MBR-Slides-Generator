@@ -1,0 +1,9 @@
+{
+  "query": "ALTER TABLE `field_bindings` ADD `bindingStatus` enum('connected','not_required','unbound') DEFAULT 'connected' NOT NULL;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4RxuTuBHhP2JPpU.9a12a4c771bb --database MsAJWo4JkN3ndL6jvfmLkL --execute ALTER TABLE `field_bindings` ADD `bindingStatus` enum('connected','not_required','unbound') DEFAULT 'connected' NOT NULL;",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 210
+}

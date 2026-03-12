@@ -91,3 +91,22 @@
 - [x] Add Data Binding navigation entry to sidebar
 - [x] Define known slide component fields for each slide type
 - [x] Remove sync direction from Data Binding - always one-directional Source → Slide
+- [x] Enforce one-binding-per-slide-section uniqueness (no duplicate bindings to same slide field)
+- [x] Add graph aggregator field type support for chart/graph data bindings
+- [x] Add Edit dialog for Data Sources (edit name, type, category, URL, sheet tab, description, pillar)
+- [x] Add Edit button to Data Source cards
+- [x] Verify Data Binding Configure (edit) dialog works end-to-end
+- [x] Show already-bound sections as disabled in the section dropdown when adding new bindings
+- [x] Add Edit button to Data Source cards for easy access to edit dialog
+- [x] Verify Data Binding Configure dialog properly edits existing bindings
+- [x] Ensure all edit mutations work end-to-end (server + UI)
+- [x] Make Data Binding rows clickable/inline-editable for easy revision of slide, section, field, graph aggregator
+- [x] Add graph_aggregator binding type (sum, avg, count, min, max, chart_series) alongside text fields
+- [x] Enforce one-binding-per-slide-section uniqueness on server (prevent duplicates)
+- [x] Allow sourceType and googleFileId to be edited on Data Sources
+- [x] Improve Data Binding table with expandable row detail for quick review
+- [x] Redesign Data Binding to show ALL template sections upfront as a comprehensive matrix
+- [x] Each template section row shows: Slide name, Section name, Status (Connected/Not Required/Unbound)
+- [x] Allow connecting a source field to each section or marking as Not Required
+- [x] Add bindingStatus (connected/not_required/unbound) to field_bindings schema
+- [x] Show coverage summary: X of Y sections connected, Z marked not required

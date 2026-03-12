@@ -29,6 +29,20 @@
       "when": 1773335490210,
       "tag": "0003_typical_colossus",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1773337703641,
+      "tag": "0004_heavy_piledriver",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1773338139502,
+      "tag": "0005_natural_odin",
+      "breakpoints": true
     }
   ]
 }

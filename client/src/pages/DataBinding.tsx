@@ -26,27 +26,23 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
-  Plus,
   ArrowRight,
-  Settings2,
-  Trash2,
+  Check,
+  X,
   Link2,
   FileText,
   Presentation,
+  Settings2,
+  Ban,
+  CircleDashed,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 
-// ─── Slide sections per slide type ─────────────────────────────
+// ─── All template slide sections ─────────────────────────────
 const SLIDE_SECTIONS: Record<string, { label: string; sections: { value: string; label: string; type: string }[] }> = {
   title: {
     label: "Title Slide",
@@ -124,6 +120,7 @@ const SLIDE_SECTIONS: Record<string, { label: string; sections: { value: string;
       { value: "forecast", label: "Forecast", type: "currency" },
       { value: "variance", label: "Variance", type: "currency" },
       { value: "commentary", label: "Commentary", type: "string" },
+      { value: "budget_chart", label: "Budget Chart Data", type: "graph_aggregator" },
     ],
   },
   budget_reforecast: {
@@ -185,8 +182,28 @@ const SOURCE_FIELD_TYPES = [
   { value: "option", label: "Option/Picklist" },
   { value: "boolean", label: "Boolean" },
   { value: "url", label: "URL" },
+  { value: "graph_aggregator", label: "Graph Aggregator" },
   { value: "other", label: "Other" },
 ];
+
+// Flatten all sections into a single list for the matrix
+function getAllSections() {
+  const result: { slideType: string; slideLabel: string; sectionValue: string; sectionLabel: string; sectionType: string }[] = [];
+  for (const [slideType, slide] of Object.entries(SLIDE_SECTIONS)) {
+    for (const sec of slide.sections) {
+      result.push({
+        slideType,
+        slideLabel: slide.label,
+        sectionValue: sec.value,
+        sectionLabel: sec.label,
+        sectionType: sec.type,
+      });
+    }
+  }
+  return result;
+}
+
+const ALL_SECTIONS = getAllSections();
 
 type FieldBinding = {
   id: number;
@@ -198,6 +215,7 @@ type FieldBinding = {
   slideSection: string;
   slideSectionType: string;
   syncDirection: string;
+  bindingStatus?: string;
   transformNotes: string | null;
   isActive: boolean;
   createdAt: Date;
@@ -206,16 +224,14 @@ type FieldBinding = {
 
 export default function DataBinding() {
   const [selectedPillarId, setSelectedPillarId] = useState<string>("all");
-  const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [configDialogOpen, setConfigDialogOpen] = useState(false);
-  const [editingBinding, setEditingBinding] = useState<FieldBinding | null>(null);
+  const [connectDialogOpen, setConnectDialogOpen] = useState(false);
+  const [editingSection, setEditingSection] = useState<{ slideType: string; sectionValue: string; sectionLabel: string; sectionType: string } | null>(null);
+  const [editingExistingBinding, setEditingExistingBinding] = useState<FieldBinding | null>(null);
+  const [expandedSlides, setExpandedSlides] = useState<Set<string>>(new Set(Object.keys(SLIDE_SECTIONS)));
 
   // Form state
   const [sourceField, setSourceField] = useState("");
   const [sourceFieldType, setSourceFieldType] = useState("string");
-  const [slideType, setSlideType] = useState("");
-  const [slideSection, setSlideSection] = useState("");
-  const [slideSectionType, setSlideSectionType] = useState("string");
   const [transformNotes, setTransformNotes] = useState("");
   const [selectedDataSourceId, setSelectedDataSourceId] = useState<string>("");
 
@@ -236,456 +252,517 @@ export default function DataBinding() {
 
   // Mutations
   const utils = trpc.useUtils();
-  const createBinding = trpc.fieldBindings.create.useMutation({
+  const upsertBinding = trpc.fieldBindings.upsert.useMutation({
     onSuccess: () => {
-      toast.success("Field binding created.");
+      toast.success("Binding saved.");
       utils.fieldBindings.list.invalidate();
+      setConnectDialogOpen(false);
+      setEditingSection(null);
+      setEditingExistingBinding(null);
       resetForm();
-      setAddDialogOpen(false);
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e: any) => toast.error(e.message),
   });
 
   const updateBinding = trpc.fieldBindings.update.useMutation({
     onSuccess: () => {
-      toast.success("Field binding updated.");
+      toast.success("Binding updated.");
       utils.fieldBindings.list.invalidate();
-      resetForm();
-      setConfigDialogOpen(false);
-      setEditingBinding(null);
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e: any) => toast.error(e.message),
   });
 
   const deleteBinding = trpc.fieldBindings.delete.useMutation({
     onSuccess: () => {
-      toast.success("Field binding deleted.");
+      toast.success("Binding removed.");
       utils.fieldBindings.list.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e: any) => toast.error(e.message),
   });
 
   function resetForm() {
     setSourceField("");
     setSourceFieldType("string");
-    setSlideType("");
-    setSlideSection("");
-    setSlideSectionType("string");
     setTransformNotes("");
     setSelectedDataSourceId("");
   }
 
-  function openAddDialog() {
-    resetForm();
-    setAddDialogOpen(true);
-  }
-
-  function openConfigDialog(binding: FieldBinding) {
-    setEditingBinding(binding);
-    setSourceField(binding.sourceField);
-    setSourceFieldType(binding.sourceFieldType);
-    setSlideType(binding.slideType);
-    setSlideSection(binding.slideSection);
-    setSlideSectionType(binding.slideSectionType);
-    setTransformNotes(binding.transformNotes ?? "");
-    setSelectedDataSourceId(binding.dataSourceId?.toString() ?? "");
-    setConfigDialogOpen(true);
-  }
-
-  function handleCreate() {
-    const pillarId = numericPillarId ?? (pillars.length > 0 ? pillars[0].id : undefined);
-    if (!pillarId || !sourceField || !slideType || !slideSection) {
-      toast.error("Please fill in all required fields.");
-      return;
-    }
-    createBinding.mutate({
-      pillarConfigId: pillarId,
-      dataSourceId: selectedDataSourceId && selectedDataSourceId !== "none" ? parseInt(selectedDataSourceId) : undefined,
-      sourceField,
-      sourceFieldType: sourceFieldType as any,
-      slideType: slideType as any,
-      slideSection,
-      slideSectionType: slideSectionType as any,
-      syncDirection: "source_to_slide" as any,
-      transformNotes: transformNotes || undefined,
-    });
-  }
-
-  function handleUpdate() {
-    if (!editingBinding) return;
-    updateBinding.mutate({
-      id: editingBinding.id,
-      sourceField: sourceField || undefined,
-      sourceFieldType: sourceFieldType as any,
-      slideType: slideType as any,
-      slideSection: slideSection || undefined,
-      slideSectionType: slideSectionType as any,
-      syncDirection: "source_to_slide" as any,
-      transformNotes: transformNotes || undefined,
-    });
-  }
-
-  // Available slide sections based on selected slide type
-  const availableSections = slideType ? (SLIDE_SECTIONS[slideType]?.sections ?? []) : [];
-
-  // When slide type changes, auto-set slideSectionType from the section definition
-  function handleSlideSectionChange(val: string) {
-    setSlideSection(val);
-    const sec = availableSections.find((s) => s.value === val);
-    if (sec) setSlideSectionType(sec.type);
-  }
-
-  // Group bindings by slide type for the table
-  const groupedBindings = useMemo(() => {
-    const groups: Record<string, FieldBinding[]> = {};
+  // Build a lookup: slideType+sectionValue -> binding
+  const bindingMap = useMemo(() => {
+    const map = new Map<string, FieldBinding>();
     for (const b of bindings) {
-      if (!groups[b.slideType]) groups[b.slideType] = [];
-      groups[b.slideType].push(b);
+      map.set(`${b.slideType}::${b.slideSection}`, b);
     }
-    return groups;
+    return map;
   }, [bindings]);
 
-  // Get data source name by id
+  function getBinding(slideType: string, sectionValue: string): FieldBinding | undefined {
+    return bindingMap.get(`${slideType}::${sectionValue}`);
+  }
+
+  function getStatus(slideType: string, sectionValue: string): "connected" | "not_required" | "unbound" {
+    const b = getBinding(slideType, sectionValue);
+    if (!b) return "unbound";
+    return (b.bindingStatus as any) ?? "connected";
+  }
+
   function getSourceName(dsId: number | null) {
-    if (!dsId) return "—";
+    if (!dsId) return null;
     const ds = dataSources.find((d) => d.id === dsId);
     return ds?.name ?? `Source #${dsId}`;
   }
 
-  function getSlideLabel(type: string) {
-    return SLIDE_SECTIONS[type]?.label ?? type;
+  // Coverage stats
+  const stats = useMemo(() => {
+    let connected = 0, notRequired = 0, unbound = 0;
+    for (const sec of ALL_SECTIONS) {
+      const status = getStatus(sec.slideType, sec.sectionValue);
+      if (status === "connected") connected++;
+      else if (status === "not_required") notRequired++;
+      else unbound++;
+    }
+    return { connected, notRequired, unbound, total: ALL_SECTIONS.length };
+  }, [bindings]);
+
+  // Open connect dialog for a section
+  function openConnect(slideType: string, sectionValue: string, sectionLabel: string, sectionType: string) {
+    const existing = getBinding(slideType, sectionValue);
+    setEditingSection({ slideType, sectionValue, sectionLabel, sectionType });
+    if (existing && existing.bindingStatus !== "not_required") {
+      setEditingExistingBinding(existing);
+      setSourceField(existing.sourceField === "—" ? "" : existing.sourceField);
+      setSourceFieldType(existing.sourceFieldType);
+      setTransformNotes(existing.transformNotes ?? "");
+      setSelectedDataSourceId(existing.dataSourceId?.toString() ?? "");
+    } else {
+      setEditingExistingBinding(null);
+      resetForm();
+    }
+    setConnectDialogOpen(true);
   }
 
-  function getSectionLabel(type: string, section: string) {
-    const sec = SLIDE_SECTIONS[type]?.sections.find((s) => s.value === section);
-    return sec?.label ?? section;
+  // Save connect
+  function handleSaveConnect() {
+    if (!editingSection) return;
+    const pillarId = numericPillarId ?? (pillars.length > 0 ? pillars[0].id : undefined);
+    if (!pillarId) {
+      toast.error("Please select a pillar first.");
+      return;
+    }
+    if (!sourceField.trim()) {
+      toast.error("Please enter a source field name.");
+      return;
+    }
+    upsertBinding.mutate({
+      pillarConfigId: pillarId,
+      slideType: editingSection.slideType as any,
+      slideSection: editingSection.sectionValue,
+      bindingStatus: "connected",
+      sourceField: sourceField.trim(),
+      sourceFieldType: sourceFieldType as any,
+      slideSectionType: editingSection.sectionType as any,
+      dataSourceId: selectedDataSourceId && selectedDataSourceId !== "none" ? parseInt(selectedDataSourceId) : null,
+      transformNotes: transformNotes || undefined,
+    });
   }
 
-  // ─── Binding Form (shared between Add and Configure dialogs) ──
-  function BindingForm({ isEdit }: { isEdit: boolean }) {
+  // Mark as not required
+  function markNotRequired(slideType: string, sectionValue: string) {
+    const pillarId = numericPillarId ?? (pillars.length > 0 ? pillars[0].id : undefined);
+    if (!pillarId) {
+      toast.error("Please select a pillar first.");
+      return;
+    }
+    upsertBinding.mutate({
+      pillarConfigId: pillarId,
+      slideType: slideType as any,
+      slideSection: sectionValue,
+      bindingStatus: "not_required",
+      sourceField: "—",
+      slideSectionType: "string" as any,
+    });
+  }
+
+  // Clear binding (reset to unbound)
+  function clearBinding(slideType: string, sectionValue: string) {
+    const existing = getBinding(slideType, sectionValue);
+    if (existing) {
+      deleteBinding.mutate({ id: existing.id });
+    }
+  }
+
+  // Toggle slide expansion
+  function toggleSlide(slideType: string) {
+    setExpandedSlides((prev) => {
+      const next = new Set(prev);
+      if (next.has(slideType)) next.delete(slideType);
+      else next.add(slideType);
+      return next;
+    });
+  }
+
+  // Count per slide
+  function slideStats(slideType: string) {
+    const sections = SLIDE_SECTIONS[slideType]?.sections ?? [];
+    let connected = 0, notRequired = 0, unbound = 0;
+    for (const sec of sections) {
+      const status = getStatus(slideType, sec.value);
+      if (status === "connected") connected++;
+      else if (status === "not_required") notRequired++;
+      else unbound++;
+    }
+    return { connected, notRequired, unbound, total: sections.length };
+  }
+
+  // Status badge
+  function StatusBadge({ status }: { status: "connected" | "not_required" | "unbound" }) {
+    if (status === "connected") {
+      return (
+        <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 gap-1 font-normal">
+          <Check className="h-3 w-3" /> Connected
+        </Badge>
+      );
+    }
+    if (status === "not_required") {
+      return (
+        <Badge className="bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 border-gray-200 dark:border-gray-700 gap-1 font-normal">
+          <Ban className="h-3 w-3" /> Not Required
+        </Badge>
+      );
+    }
     return (
-      <div className="grid gap-4 py-2">
-        {/* Pillar (if on All tab and adding) */}
-        {!isEdit && selectedPillarId === "all" && pillars.length > 0 && (
-          <div className="space-y-1.5">
-            <Label>Pillar <span className="text-destructive">*</span></Label>
-            <Select value={selectedPillarId === "all" ? "" : selectedPillarId} onValueChange={(v) => setSelectedPillarId(v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select pillar..." />
-              </SelectTrigger>
-              <SelectContent>
-                {pillars.map((p) => (
-                  <SelectItem key={p.id} value={p.id.toString()}>
-                    {p.pillarName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-
-        {/* Data Source (optional) */}
-        {!isEdit && (
-          <div className="space-y-1.5">
-            <Label>Data Source <span className="text-muted-foreground text-xs">(optional)</span></Label>
-            <Select value={selectedDataSourceId} onValueChange={setSelectedDataSourceId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Link to a data source..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No specific source</SelectItem>
-                {dataSources.map((ds) => (
-                  <SelectItem key={ds.id} value={ds.id.toString()}>
-                    {ds.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-
-        {/* Two-column mapping: Source → Slide */}
-        <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-start">
-          {/* Source side */}
-          <div className="rounded-lg border p-4 space-y-3 bg-blue-50/50 dark:bg-blue-950/20">
-            <div className="flex items-center gap-2 text-sm font-semibold text-blue-800 dark:text-blue-300">
-              <FileText className="h-4 w-4" />
-              Data Source
-            </div>
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs">Field / Section Name <span className="text-destructive">*</span></Label>
-                <Input
-                  placeholder="e.g., Due Date, Summary..."
-                  value={sourceField}
-                  onChange={(e) => setSourceField(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Field Type</Label>
-                <Select value={sourceFieldType} onValueChange={setSourceFieldType}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SOURCE_FIELD_TYPES.map((t) => (
-                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-
-          {/* Arrow */}
-          <div className="flex items-center justify-center pt-12">
-            <ArrowRight className="h-6 w-6 text-emerald-600" />
-          </div>
-
-          {/* Slide side */}
-          <div className="rounded-lg border p-4 space-y-3 bg-orange-50/50 dark:bg-orange-950/20">
-            <div className="flex items-center gap-2 text-sm font-semibold text-orange-800 dark:text-orange-300">
-              <Presentation className="h-4 w-4" />
-              MBR Slide
-            </div>
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs">Slide <span className="text-destructive">*</span></Label>
-                <Select value={slideType} onValueChange={(v) => { setSlideType(v); setSlideSection(""); }}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select slide..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(SLIDE_SECTIONS).map(([key, val]) => (
-                      <SelectItem key={key} value={key}>{val.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Section / Field <span className="text-destructive">*</span></Label>
-                <Select value={slideSection} onValueChange={handleSlideSectionChange} disabled={!slideType}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={slideType ? "Select section..." : "Select slide first"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableSections.map((s) => (
-                      <SelectItem key={s.value} value={s.value}>
-                        {s.label}
-                        <span className="text-muted-foreground ml-1 text-xs">({s.type})</span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Transform Notes */}
-        <div className="space-y-1.5">
-          <Label className="text-xs">Transform / Notes <span className="text-muted-foreground">(optional)</span></Label>
-          <Input
-            placeholder="e.g., Convert cents to dollars, format as MM/DD/YYYY..."
-            value={transformNotes}
-            onChange={(e) => setTransformNotes(e.target.value)}
-          />
-        </div>
-      </div>
+      <Badge className="bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400 border-amber-200 dark:border-amber-800 gap-1 font-normal">
+        <CircleDashed className="h-3 w-3" /> Unbound
+      </Badge>
     );
   }
 
-  // ─── Render ──────────────────────────────────────────────────
+  // Pillar required check
+  const hasPillar = selectedPillarId !== "all" || pillars.length > 0;
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Data Binding</h1>
-            <p className="text-muted-foreground text-sm mt-1">
-              Map data source fields to MBR slide sections. Each binding defines how source data flows into the generated deck.
-            </p>
-          </div>
-          <Button onClick={openAddDialog} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Add Binding
-          </Button>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Data Binding</h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            Connect each MBR template section to a data source field, or mark it as not required. All template sections are shown below.
+          </p>
+        </div>
+
+        {/* Coverage Summary */}
+        <div className="grid grid-cols-4 gap-3">
+          <Card className="p-4">
+            <div className="text-2xl font-bold">{stats.total}</div>
+            <div className="text-xs text-muted-foreground">Total Sections</div>
+          </Card>
+          <Card className="p-4">
+            <div className="text-2xl font-bold text-emerald-600">{stats.connected}</div>
+            <div className="text-xs text-muted-foreground">Connected</div>
+          </Card>
+          <Card className="p-4">
+            <div className="text-2xl font-bold text-gray-400">{stats.notRequired}</div>
+            <div className="text-xs text-muted-foreground">Not Required</div>
+          </Card>
+          <Card className="p-4">
+            <div className="text-2xl font-bold text-amber-600">{stats.unbound}</div>
+            <div className="text-xs text-muted-foreground">Unbound</div>
+          </Card>
         </div>
 
         {/* Pillar Tabs */}
         <Tabs value={selectedPillarId} onValueChange={setSelectedPillarId}>
           <TabsList>
-            <TabsTrigger value="all">
-              All <Badge variant="secondary" className="ml-1.5 text-xs">{bindings.length}</Badge>
-            </TabsTrigger>
+            <TabsTrigger value="all">All Pillars</TabsTrigger>
             {pillars.map((p) => (
               <TabsTrigger key={p.id} value={p.id.toString()}>
-                {p.pillarName.length > 20 ? p.pillarName.slice(0, 18) + "\u2026" : p.pillarName}
-                <Badge variant="secondary" className="ml-1.5 text-xs">
-                  {bindings.filter((b) => b.pillarConfigId === p.id).length}
-                </Badge>
+                {p.pillarName.length > 22 ? p.pillarName.slice(0, 20) + "\u2026" : p.pillarName}
               </TabsTrigger>
             ))}
           </TabsList>
 
           <TabsContent value={selectedPillarId} className="mt-4">
-            {bindings.length === 0 ? (
+            {selectedPillarId === "all" && pillars.length === 0 ? (
               <Card>
                 <CardContent className="flex flex-col items-center justify-center py-16 text-center">
                   <Link2 className="h-12 w-12 text-muted-foreground/40 mb-4" />
-                  <h3 className="text-lg font-medium text-muted-foreground">No field bindings yet</h3>
+                  <h3 className="text-lg font-medium text-muted-foreground">No pillars configured</h3>
                   <p className="text-sm text-muted-foreground/70 mt-1 max-w-md">
-                    Create bindings to map data source fields to slide sections. Each binding defines how a source field populates a specific part of your MBR deck.
+                    Create a pillar first in the Pillars page, then come back to set up data bindings.
                   </p>
-                  <Button onClick={openAddDialog} variant="outline" className="mt-4 gap-2">
-                    <Plus className="h-4 w-4" /> Add First Binding
-                  </Button>
                 </CardContent>
               </Card>
             ) : (
-              <div className="space-y-6">
-                {Object.entries(groupedBindings).map(([slideTypeKey, slideBindings]) => (
-                  <Card key={slideTypeKey}>
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center gap-2">
-                        <Presentation className="h-4 w-4 text-primary" />
-                        <CardTitle className="text-base">{getSlideLabel(slideTypeKey)}</CardTitle>
-                      </div>
-                      <CardDescription className="text-xs">
-                        {slideBindings.length} field {slideBindings.length === 1 ? "mapping" : "mappings"}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="p-0">
-                      <Table>
-                        <TableHeader>
-                          <TableRow className="bg-muted/50">
-                            <TableHead className="w-[25%] font-semibold">
-                              <div className="flex items-center gap-1.5">
-                                <FileText className="h-3.5 w-3.5" />
-                                Data Source Field
-                              </div>
-                            </TableHead>
-                            <TableHead className="w-[10%] text-center font-semibold">Type</TableHead>
-                            <TableHead className="w-[5%] text-center font-semibold"></TableHead>
-                            <TableHead className="w-[25%] font-semibold">
-                              <div className="flex items-center gap-1.5">
-                                <Presentation className="h-3.5 w-3.5" />
-                                Slide Section
-                              </div>
-                            </TableHead>
-                            <TableHead className="w-[10%] text-center font-semibold">Type</TableHead>
-                            <TableHead className="w-[15%] font-semibold">Source</TableHead>
-                            <TableHead className="w-[10%] text-right font-semibold">Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {slideBindings.map((binding) => (
-                            <TableRow key={binding.id} className="group">
-                              <TableCell>
-                                <div className="font-medium">{binding.sourceField}</div>
-                                {binding.transformNotes && (
-                                  <div className="text-xs text-muted-foreground mt-0.5 truncate max-w-[200px]">
-                                    {binding.transformNotes}
+              <div className="space-y-3">
+                {Object.entries(SLIDE_SECTIONS).map(([slideType, slide]) => {
+                  const isExpanded = expandedSlides.has(slideType);
+                  const ss = slideStats(slideType);
+                  return (
+                    <Card key={slideType} className="overflow-hidden">
+                      {/* Slide header - collapsible */}
+                      <button
+                        className="w-full flex items-center gap-3 px-5 py-3.5 text-left hover:bg-muted/30 transition-colors"
+                        onClick={() => toggleSlide(slideType)}
+                      >
+                        {isExpanded ? (
+                          <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                        )}
+                        <Presentation className="h-4 w-4 text-primary shrink-0" />
+                        <span className="font-semibold text-sm">{slide.label}</span>
+                        <span className="text-xs text-muted-foreground ml-1">
+                          ({slide.sections.length} {slide.sections.length === 1 ? "section" : "sections"})
+                        </span>
+                        <div className="ml-auto flex items-center gap-2">
+                          {ss.connected > 0 && (
+                            <span className="text-xs text-emerald-600 font-medium">{ss.connected} connected</span>
+                          )}
+                          {ss.notRequired > 0 && (
+                            <span className="text-xs text-gray-400 font-medium">{ss.notRequired} skipped</span>
+                          )}
+                          {ss.unbound > 0 && (
+                            <span className="text-xs text-amber-600 font-medium">{ss.unbound} unbound</span>
+                          )}
+                        </div>
+                      </button>
+
+                      {/* Section rows */}
+                      {isExpanded && (
+                        <div className="border-t">
+                          {slide.sections.map((sec, idx) => {
+                            const status = getStatus(slideType, sec.value);
+                            const binding = getBinding(slideType, sec.value);
+                            return (
+                              <div
+                                key={sec.value}
+                                className={`flex items-center gap-3 px-5 py-3 ${idx < slide.sections.length - 1 ? "border-b" : ""} ${
+                                  status === "connected"
+                                    ? "bg-emerald-50/40 dark:bg-emerald-950/10"
+                                    : status === "not_required"
+                                    ? "bg-gray-50/60 dark:bg-gray-900/20"
+                                    : "bg-amber-50/30 dark:bg-amber-950/10"
+                                }`}
+                              >
+                                {/* Slide section info */}
+                                <div className="flex items-center gap-2 min-w-[220px]">
+                                  <Presentation className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                  <div>
+                                    <div className="text-sm font-medium">{sec.label}</div>
+                                    <div className="text-xs text-muted-foreground">Type: {sec.type}</div>
                                   </div>
-                                )}
-                              </TableCell>
-                              <TableCell className="text-center">
-                                <Badge variant="outline" className="text-xs font-normal">
-                                  {binding.sourceFieldType}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="text-center">
-                                <ArrowRight className="h-4 w-4 text-emerald-600 mx-auto" />
-                              </TableCell>
-                              <TableCell>
-                                <div className="font-medium">{getSectionLabel(binding.slideType, binding.slideSection)}</div>
-                              </TableCell>
-                              <TableCell className="text-center">
-                                <Badge variant="outline" className="text-xs font-normal">
-                                  {binding.slideSectionType}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                <span className="text-sm text-muted-foreground truncate block max-w-[120px]">
-                                  {getSourceName(binding.dataSourceId)}
-                                </span>
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <div className="flex items-center justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    onClick={() => openConfigDialog(binding)}
-                                    title="Configure"
-                                  >
-                                    <Settings2 className="h-3.5 w-3.5" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7 text-destructive hover:text-destructive"
-                                    onClick={() => {
-                                      if (confirm("Delete this field binding?")) {
-                                        deleteBinding.mutate({ id: binding.id });
-                                      }
-                                    }}
-                                    title="Delete"
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </Button>
                                 </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </CardContent>
-                  </Card>
-                ))}
+
+                                {/* Status badge */}
+                                <div className="min-w-[120px]">
+                                  <StatusBadge status={status} />
+                                </div>
+
+                                {/* Connected source info */}
+                                <div className="flex-1 min-w-0">
+                                  {status === "connected" && binding ? (
+                                    <div className="flex items-center gap-2">
+                                      <ArrowRight className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                                      <div className="min-w-0">
+                                        <div className="text-sm font-medium truncate flex items-center gap-1.5">
+                                          <FileText className="h-3 w-3 text-blue-500 shrink-0" />
+                                          {binding.sourceField}
+                                          <Badge variant="outline" className="text-[10px] font-normal ml-1">
+                                            {binding.sourceFieldType}
+                                          </Badge>
+                                        </div>
+                                        <div className="text-xs text-muted-foreground truncate">
+                                          {getSourceName(binding.dataSourceId) && (
+                                            <span>Source: {getSourceName(binding.dataSourceId)}</span>
+                                          )}
+                                          {binding.transformNotes && (
+                                            <span className="ml-2 italic">{binding.transformNotes}</span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ) : status === "not_required" ? (
+                                    <span className="text-xs text-muted-foreground italic">Skipped — not needed for this pillar</span>
+                                  ) : (
+                                    <span className="text-xs text-amber-600 italic">No source connected yet</span>
+                                  )}
+                                </div>
+
+                                {/* Actions */}
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {status === "connected" ? (
+                                    <>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 text-xs gap-1"
+                                        onClick={() => openConnect(slideType, sec.value, sec.label, sec.type)}
+                                      >
+                                        <Settings2 className="h-3 w-3" /> Edit
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 text-xs text-destructive hover:text-destructive gap-1"
+                                        onClick={() => clearBinding(slideType, sec.value)}
+                                      >
+                                        <X className="h-3 w-3" /> Clear
+                                      </Button>
+                                    </>
+                                  ) : status === "not_required" ? (
+                                    <>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 text-xs gap-1"
+                                        onClick={() => openConnect(slideType, sec.value, sec.label, sec.type)}
+                                      >
+                                        <Link2 className="h-3 w-3" /> Connect
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 text-xs text-destructive hover:text-destructive gap-1"
+                                        onClick={() => clearBinding(slideType, sec.value)}
+                                      >
+                                        <X className="h-3 w-3" /> Clear
+                                      </Button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-7 text-xs gap-1"
+                                        onClick={() => openConnect(slideType, sec.value, sec.label, sec.type)}
+                                      >
+                                        <Link2 className="h-3 w-3" /> Connect
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 text-xs text-muted-foreground gap-1"
+                                        onClick={() => markNotRequired(slideType, sec.value)}
+                                      >
+                                        <Ban className="h-3 w-3" /> Not Required
+                                      </Button>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </Card>
+                  );
+                })}
               </div>
             )}
           </TabsContent>
         </Tabs>
       </div>
 
-      {/* ─── Add Binding Dialog ─────────────────────────────────── */}
-      <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-        <DialogContent className="sm:max-w-[680px]">
+      {/* ─── Connect / Edit Binding Dialog ─────────────────────────── */}
+      <Dialog open={connectDialogOpen} onOpenChange={(open) => { setConnectDialogOpen(open); if (!open) { setEditingSection(null); setEditingExistingBinding(null); } }}>
+        <DialogContent className="sm:max-w-[560px]">
           <DialogHeader>
-            <DialogTitle>Add Field Binding</DialogTitle>
+            <DialogTitle>
+              {editingExistingBinding ? "Edit Binding" : "Connect Source Field"}
+            </DialogTitle>
             <DialogDescription>
-              Map a data source field to a specific section in an MBR slide. Data flows from source to slide.
+              {editingSection && (
+                <>
+                  Map a data source field to <strong>{editingSection.sectionLabel}</strong> in the{" "}
+                  <strong>{SLIDE_SECTIONS[editingSection.slideType]?.label}</strong> slide.
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
-          <BindingForm isEdit={false} />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAddDialogOpen(false)}>Cancel</Button>
-            <Button
-              onClick={handleCreate}
-              disabled={createBinding.isPending || !sourceField || !slideType || !slideSection}
-            >
-              {createBinding.isPending ? "Creating..." : "Add Binding"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
-      {/* ─── Configure Binding Dialog ───────────────────────────── */}
-      <Dialog open={configDialogOpen} onOpenChange={(open) => { setConfigDialogOpen(open); if (!open) setEditingBinding(null); }}>
-        <DialogContent className="sm:max-w-[680px]">
-          <DialogHeader>
-            <DialogTitle>Configure Field Binding</DialogTitle>
-            <DialogDescription>
-              Update the mapping between source field and slide section.
-            </DialogDescription>
-          </DialogHeader>
-          <BindingForm isEdit={true} />
+          <div className="grid gap-4 py-2">
+            {/* Target section (read-only display) */}
+            <div className="rounded-lg border p-3 bg-orange-50/50 dark:bg-orange-950/20">
+              <div className="flex items-center gap-2 text-sm font-semibold text-orange-800 dark:text-orange-300 mb-1">
+                <Presentation className="h-4 w-4" />
+                MBR Slide Target
+              </div>
+              <div className="text-sm">
+                <span className="font-medium">{SLIDE_SECTIONS[editingSection?.slideType ?? ""]?.label}</span>
+                {" → "}
+                <span className="font-medium">{editingSection?.sectionLabel}</span>
+                <Badge variant="outline" className="ml-2 text-[10px]">{editingSection?.sectionType}</Badge>
+              </div>
+            </div>
+
+            {/* Source field input */}
+            <div className="rounded-lg border p-3 bg-blue-50/50 dark:bg-blue-950/20 space-y-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-blue-800 dark:text-blue-300">
+                <FileText className="h-4 w-4" />
+                Data Source Field
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs">Field / Section Name <span className="text-destructive">*</span></Label>
+                <Input
+                  placeholder="e.g., Due Date, Summary, Payment Amount..."
+                  value={sourceField}
+                  onChange={(e) => setSourceField(e.target.value)}
+                  autoFocus
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Field Type</Label>
+                  <Select value={sourceFieldType} onValueChange={setSourceFieldType}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SOURCE_FIELD_TYPES.map((t) => (
+                        <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Data Source</Label>
+                  <Select value={selectedDataSourceId} onValueChange={setSelectedDataSourceId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Optional..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No specific source</SelectItem>
+                      {dataSources.map((ds) => (
+                        <SelectItem key={ds.id} value={ds.id.toString()}>
+                          {ds.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs">Transform / Notes <span className="text-muted-foreground">(optional)</span></Label>
+                <Input
+                  placeholder="e.g., Sum all rows, format as currency..."
+                  value={transformNotes}
+                  onChange={(e) => setTransformNotes(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setConfigDialogOpen(false); setEditingBinding(null); }}>Cancel</Button>
-            <Button onClick={handleUpdate} disabled={updateBinding.isPending}>
-              {updateBinding.isPending ? "Saving..." : "Save Changes"}
+            <Button variant="outline" onClick={() => setConnectDialogOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleSaveConnect}
+              disabled={upsertBinding.isPending || !sourceField.trim()}
+            >
+              {upsertBinding.isPending ? "Saving..." : editingExistingBinding ? "Save Changes" : "Connect"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -47,6 +47,8 @@ export const appRouter = router({
       .input(z.object({
         id: z.number(),
         name: z.string().min(1).optional(),
+        sourceType: z.enum(["google_sheet", "google_doc", "google_slides"]).optional(),
+        googleFileId: z.string().min(1).optional(),
         sheetTab: z.string().optional(),
         description: z.string().optional(),
         category: z.enum(["planning_doc", "content_calendar", "budget_tracker", "expense_data", "template", "other"]).optional(),
@@ -121,7 +123,7 @@ export const appRouter = router({
         pillarConfigId: z.number(),
         dataSourceId: z.number().optional(),
         sourceField: z.string().min(1),
-        sourceFieldType: z.enum(["string", "number", "date", "currency", "option", "boolean", "url", "other"]).default("string"),
+        sourceFieldType: z.enum(["string", "number", "date", "currency", "option", "boolean", "url", "graph_aggregator", "other"]).default("string"),
         slideType: z.enum([
           "title", "agenda", "exclusions", "executive_summary",
           "initiatives_goals", "initiative_deep_dive", "launch_schedule",
@@ -132,13 +134,26 @@ export const appRouter = router({
         slideSectionType: z.enum(["string", "number", "date", "currency", "picklist", "boolean", "other"]).default("string"),
         syncDirection: z.enum(["source_to_slide", "slide_to_source", "bidirectional"]).default("source_to_slide"),
         transformNotes: z.string().optional(),
+        bindingStatus: z.enum(["connected", "not_required", "unbound"]).default("connected"),
       }))
-      .mutation(({ input }) => db.createFieldBinding(input)),
+      .mutation(async ({ input }) => {
+        // Enforce one-binding-per-slide-section uniqueness within a pillar
+        const existing = await db.listFieldBindings(input.pillarConfigId);
+        const duplicate = existing.find(
+          (b) => b.slideType === input.slideType && b.slideSection === input.slideSection
+        );
+        if (duplicate) {
+          throw new Error(
+            `A binding already exists for ${input.slideType} → ${input.slideSection}. Edit the existing binding instead.`
+          );
+        }
+        return db.createFieldBinding(input);
+      }),
     update: protectedProcedure
       .input(z.object({
         id: z.number(),
         sourceField: z.string().optional(),
-        sourceFieldType: z.enum(["string", "number", "date", "currency", "option", "boolean", "url", "other"]).optional(),
+        sourceFieldType: z.enum(["string", "number", "date", "currency", "option", "boolean", "url", "graph_aggregator", "other"]).optional(),
         slideType: z.enum([
           "title", "agenda", "exclusions", "executive_summary",
           "initiatives_goals", "initiative_deep_dive", "launch_schedule",
@@ -149,11 +164,59 @@ export const appRouter = router({
         slideSectionType: z.enum(["string", "number", "date", "currency", "picklist", "boolean", "other"]).optional(),
         syncDirection: z.enum(["source_to_slide", "slide_to_source", "bidirectional"]).optional(),
         transformNotes: z.string().optional(),
+        bindingStatus: z.enum(["connected", "not_required", "unbound"]).optional(),
+        dataSourceId: z.number().nullable().optional(),
         isActive: z.boolean().optional(),
       }))
       .mutation(({ input }) => {
         const { id, ...data } = input;
         return db.updateFieldBinding(id, data);
+      }),
+    /** Upsert: create or update a binding for a specific slide+section within a pillar */
+    upsert: protectedProcedure
+      .input(z.object({
+        pillarConfigId: z.number(),
+        slideType: z.enum([
+          "title", "agenda", "exclusions", "executive_summary",
+          "initiatives_goals", "initiative_deep_dive", "launch_schedule",
+          "key_dates", "budget_update", "budget_reforecast",
+          "te", "appendix_header", "budget_detail", "appendix_content", "end_frame"
+        ]),
+        slideSection: z.string().min(1),
+        bindingStatus: z.enum(["connected", "not_required", "unbound"]),
+        sourceField: z.string().optional(),
+        sourceFieldType: z.enum(["string", "number", "date", "currency", "option", "boolean", "url", "graph_aggregator", "other"]).optional(),
+        slideSectionType: z.enum(["string", "number", "date", "currency", "picklist", "boolean", "other"]).optional(),
+        dataSourceId: z.number().nullable().optional(),
+        transformNotes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const existing = await db.listFieldBindings(input.pillarConfigId);
+        const match = existing.find(
+          (b) => b.slideType === input.slideType && b.slideSection === input.slideSection
+        );
+        if (match) {
+          return db.updateFieldBinding(match.id, {
+            bindingStatus: input.bindingStatus,
+            sourceField: input.sourceField || match.sourceField,
+            sourceFieldType: input.sourceFieldType,
+            slideSectionType: input.slideSectionType,
+            dataSourceId: input.dataSourceId,
+            transformNotes: input.transformNotes,
+          });
+        }
+        return db.createFieldBinding({
+          pillarConfigId: input.pillarConfigId,
+          slideType: input.slideType,
+          slideSection: input.slideSection,
+          bindingStatus: input.bindingStatus,
+          sourceField: input.sourceField || '—',
+          sourceFieldType: input.sourceFieldType || 'string',
+          slideSectionType: input.slideSectionType || 'string',
+          syncDirection: 'source_to_slide',
+          dataSourceId: input.dataSourceId ?? undefined,
+          transformNotes: input.transformNotes,
+        });
       }),
     delete: protectedProcedure
       .input(z.object({ id: z.number() }))
