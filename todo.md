@@ -75,3 +75,19 @@
 - [x] BUG FIX: Launch Schedule table (slide 7) - empty cells show em dash instead of [DATE] placeholder
 - [x] BUG FIX: Key Dates table (slide 8) - empty cells show em dash instead of [DATE] placeholder
 - [x] Shorten simulated data annotations to fit within slide cell dimensions
+- [x] Redesign Data Sources to be pillar-specific (each source belongs to a pillar)
+- [x] Add pillar_id foreign key to data_sources table
+- [x] Create source_slide_mappings table to link source sections to slide components
+- [x] Define slide components list based on template slides (Title, Exec Summary, Initiatives, etc.)
+- [x] Update server routes: pillar-scoped data source CRUD, slide mapping CRUD
+- [x] Redesign Data Sources UI: organize by pillar with tabs/accordion
+- [x] Add source-to-slide linking UI: map each source section to a slide component
+- [x] Update Add Data Source dialog to include pillar selection and slide component mapping
+- [x] Create field_bindings database table for granular source-to-slide field mapping
+- [x] Add server routes for field binding CRUD (create, list, update, delete)
+- [x] Build Data Binding UI page with pillar tabs and field mapping table
+- [x] Add sync direction indicators — replaced with one-directional Source → Slide arrows
+- [x] Add Configure and Delete actions for each field binding
+- [x] Add Data Binding navigation entry to sidebar
+- [x] Define known slide component fields for each slide type
+- [x] Remove sync direction from Data Binding - always one-directional Source → Slide

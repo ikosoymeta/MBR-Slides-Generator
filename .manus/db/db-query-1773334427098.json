@@ -1,0 +1,9 @@
+{
+  "query": "CREATE TABLE `source_slide_mappings` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`dataSourceId` int NOT NULL,\n\t`pillarConfigId` int NOT NULL,\n\t`sourceSection` varchar(500),\n\t`slideType` enum('title','agenda','exclusions','executive_summary','initiatives_goals','initiative_deep_dive','launch_schedule','key_dates','budget_update','budget_reforecast','te','appendix_header','budget_detail','appendix_content','end_frame') NOT NULL,\n\t`mappingNotes` text,\n\t`isActive` boolean NOT NULL DEFAULT true,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\t`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,\n\tCONSTRAINT `source_slide_mappings_id` PRIMARY KEY(`id`)\n);\nALTER TABLE `data_sources` ADD `pillarConfigId` int;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4RxuTuBHhP2JPpU.9a12a4c771bb --database MsAJWo4JkN3ndL6jvfmLkL --execute CREATE TABLE `source_slide_mappings` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`dataSourceId` int NOT NULL,\n\t`pillarConfigId` int NOT NULL,\n\t`sourceSection` varchar(500),\n\t`slideType` enum('title','agenda','exclusions','executive_summary','initiatives_goals','initiative_deep_dive','launch_schedule','key_dates','budget_update','budget_reforecast','te','appendix_header','budget_detail','appendix_content','end_frame') NOT NULL,\n\t`mappingNotes` text,\n\t`isActive` boolean NOT NULL DEFAULT true,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\t`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,\n\tCONSTRAINT `source_slide_mappings_id` PRIMARY KEY(`id`)\n);\nALTER TABLE `data_sources` ADD `pillarConfigId` int;",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 370
+}

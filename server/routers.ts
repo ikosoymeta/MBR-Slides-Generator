@@ -22,11 +22,14 @@ export const appRouter = router({
     }),
   }),
 
-  // ─── Data Sources ─────────────────────────────────────────────
+   // ─── Data Sources ───────────────────────────────────────────
   dataSources: router({
     list: protectedProcedure.query(({ ctx }) =>
       db.listDataSources(ctx.user.id)
     ),
+    listByPillar: protectedProcedure
+      .input(z.object({ pillarConfigId: z.number() }))
+      .query(({ input }) => db.listDataSourcesByPillar(input.pillarConfigId)),
     create: protectedProcedure
       .input(z.object({
         name: z.string().min(1),
@@ -35,6 +38,7 @@ export const appRouter = router({
         sheetTab: z.string().optional(),
         description: z.string().optional(),
         category: z.enum(["planning_doc", "content_calendar", "budget_tracker", "expense_data", "template", "other"]),
+        pillarConfigId: z.number().optional(),
       }))
       .mutation(({ ctx, input }) =>
         db.createDataSource({ ...input, userId: ctx.user.id })
@@ -46,6 +50,7 @@ export const appRouter = router({
         sheetTab: z.string().optional(),
         description: z.string().optional(),
         category: z.enum(["planning_doc", "content_calendar", "budget_tracker", "expense_data", "template", "other"]).optional(),
+        pillarConfigId: z.number().nullable().optional(),
         isActive: z.boolean().optional(),
       }))
       .mutation(({ ctx, input }) => {
@@ -57,6 +62,102 @@ export const appRouter = router({
       .mutation(({ ctx, input }) =>
         db.deleteDataSource(input.id, ctx.user.id)
       ),
+  }),
+
+  // ─── Source-Slide Mappings ─────────────────────────────────────
+  slideMappings: router({
+    listByPillar: protectedProcedure
+      .input(z.object({ pillarConfigId: z.number() }))
+      .query(({ input }) => db.listSlideMappings(input.pillarConfigId)),
+    listBySource: protectedProcedure
+      .input(z.object({ dataSourceId: z.number() }))
+      .query(({ input }) => db.listSlideMappingsBySource(input.dataSourceId)),
+    create: protectedProcedure
+      .input(z.object({
+        dataSourceId: z.number(),
+        pillarConfigId: z.number(),
+        sourceSection: z.string().optional(),
+        slideType: z.enum([
+          "title", "agenda", "exclusions", "executive_summary",
+          "initiatives_goals", "initiative_deep_dive", "launch_schedule",
+          "key_dates", "budget_update", "budget_reforecast",
+          "te", "appendix_header", "budget_detail", "appendix_content", "end_frame"
+        ]),
+        mappingNotes: z.string().optional(),
+      }))
+      .mutation(({ input }) => db.createSlideMapping(input)),
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        sourceSection: z.string().optional(),
+        slideType: z.enum([
+          "title", "agenda", "exclusions", "executive_summary",
+          "initiatives_goals", "initiative_deep_dive", "launch_schedule",
+          "key_dates", "budget_update", "budget_reforecast",
+          "te", "appendix_header", "budget_detail", "appendix_content", "end_frame"
+        ]).optional(),
+        mappingNotes: z.string().optional(),
+        isActive: z.boolean().optional(),
+      }))
+      .mutation(({ input }) => {
+        const { id, ...data } = input;
+        return db.updateSlideMapping(id, data);
+      }),
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(({ input }) => db.deleteSlideMapping(input.id)),
+  }),
+
+  // ─── Field Bindings ──────────────────────────────────────────
+  fieldBindings: router({
+    list: protectedProcedure
+      .input(z.object({ pillarConfigId: z.number().optional() }))
+      .query(({ input }) => {
+        if (input.pillarConfigId) return db.listFieldBindings(input.pillarConfigId);
+        return db.listAllFieldBindings();
+      }),
+    create: protectedProcedure
+      .input(z.object({
+        pillarConfigId: z.number(),
+        dataSourceId: z.number().optional(),
+        sourceField: z.string().min(1),
+        sourceFieldType: z.enum(["string", "number", "date", "currency", "option", "boolean", "url", "other"]).default("string"),
+        slideType: z.enum([
+          "title", "agenda", "exclusions", "executive_summary",
+          "initiatives_goals", "initiative_deep_dive", "launch_schedule",
+          "key_dates", "budget_update", "budget_reforecast",
+          "te", "appendix_header", "budget_detail", "appendix_content", "end_frame"
+        ]),
+        slideSection: z.string().min(1),
+        slideSectionType: z.enum(["string", "number", "date", "currency", "picklist", "boolean", "other"]).default("string"),
+        syncDirection: z.enum(["source_to_slide", "slide_to_source", "bidirectional"]).default("source_to_slide"),
+        transformNotes: z.string().optional(),
+      }))
+      .mutation(({ input }) => db.createFieldBinding(input)),
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        sourceField: z.string().optional(),
+        sourceFieldType: z.enum(["string", "number", "date", "currency", "option", "boolean", "url", "other"]).optional(),
+        slideType: z.enum([
+          "title", "agenda", "exclusions", "executive_summary",
+          "initiatives_goals", "initiative_deep_dive", "launch_schedule",
+          "key_dates", "budget_update", "budget_reforecast",
+          "te", "appendix_header", "budget_detail", "appendix_content", "end_frame"
+        ]).optional(),
+        slideSection: z.string().optional(),
+        slideSectionType: z.enum(["string", "number", "date", "currency", "picklist", "boolean", "other"]).optional(),
+        syncDirection: z.enum(["source_to_slide", "slide_to_source", "bidirectional"]).optional(),
+        transformNotes: z.string().optional(),
+        isActive: z.boolean().optional(),
+      }))
+      .mutation(({ input }) => {
+        const { id, ...data } = input;
+        return db.updateFieldBinding(id, data);
+      }),
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(({ input }) => db.deleteFieldBinding(input.id)),
   }),
 
   // ─── Pillar Configs ───────────────────────────────────────────

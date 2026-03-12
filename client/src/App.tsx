@@ -10,6 +10,7 @@ import History from "./pages/History";
 import DataSources from "./pages/DataSources";
 import Pillars from "./pages/Pillars";
 import Settings from "./pages/Settings";
+import DataBinding from "./pages/DataBinding";
 
 function Router() {
   return (
@@ -19,6 +20,7 @@ function Router() {
       <Route path="/history" component={History} />
       <Route path="/data-sources" component={DataSources} />
       <Route path="/pillars" component={Pillars} />
+      <Route path="/data-binding" component={DataBinding} />
       <Route path="/settings" component={Settings} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />

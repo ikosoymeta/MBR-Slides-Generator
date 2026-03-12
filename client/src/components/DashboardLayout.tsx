@@ -30,6 +30,7 @@ import {
   Database,
   Settings,
   Presentation,
+  Link2,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -41,6 +42,7 @@ const menuItems = [
   { icon: PlusCircle, label: "New MBR", path: "/generate" },
   { icon: History, label: "History", path: "/history" },
   { icon: Database, label: "Data Sources", path: "/data-sources" },
+  { icon: Link2, label: "Data Binding", path: "/data-binding" },
   { icon: Presentation, label: "Pillars", path: "/pillars" },
   { icon: Settings, label: "Settings", path: "/settings" },
 ];

@@ -15,10 +15,11 @@ export const users = mysqlTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
-/** Data source configurations - Google Docs and Sheets URLs */
+/** Data source configurations - Google Docs and Sheets URLs, scoped to a pillar */
 export const dataSources = mysqlTable("data_sources", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull(),
+  pillarConfigId: int("pillarConfigId"),
   name: varchar("name", { length: 255 }).notNull(),
   sourceType: mysqlEnum("sourceType", ["google_sheet", "google_doc", "google_slides"]).notNull(),
   googleFileId: varchar("googleFileId", { length: 255 }).notNull(),
@@ -36,6 +37,30 @@ export const dataSources = mysqlTable("data_sources", {
 
 export type DataSource = typeof dataSources.$inferSelect;
 export type InsertDataSource = typeof dataSources.$inferInsert;
+
+/** Maps a data source section/field to a specific MBR slide component */
+export const sourceSlideMappings = mysqlTable("source_slide_mappings", {
+  id: int("id").autoincrement().primaryKey(),
+  dataSourceId: int("dataSourceId").notNull(),
+  pillarConfigId: int("pillarConfigId").notNull(),
+  /** Which section/field within the source to read (e.g. sheet tab, doc heading, column range) */
+  sourceSection: varchar("sourceSection", { length: 500 }),
+  /** The slide component this feeds into */
+  slideType: mysqlEnum("slideType", [
+    "title", "agenda", "exclusions", "executive_summary",
+    "initiatives_goals", "initiative_deep_dive", "launch_schedule",
+    "key_dates", "budget_update", "budget_reforecast",
+    "te", "appendix_header", "budget_detail", "appendix_content", "end_frame"
+  ]).notNull(),
+  /** Optional description of what data this mapping provides */
+  mappingNotes: text("mappingNotes"),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type SourceSlideMapping = typeof sourceSlideMappings.$inferSelect;
+export type InsertSourceSlideMapping = typeof sourceSlideMappings.$inferInsert;
 
 /** Pillar configurations with folder mappings */
 export const pillarConfigs = mysqlTable("pillar_configs", {
@@ -96,3 +121,41 @@ export const generationLogs = mysqlTable("generation_logs", {
 
 export type GenerationLog = typeof generationLogs.$inferSelect;
 export type InsertGenerationLog = typeof generationLogs.$inferInsert;
+
+/** Field-level bindings: maps a source field/section to a specific slide section */
+export const fieldBindings = mysqlTable("field_bindings", {
+  id: int("id").autoincrement().primaryKey(),
+  pillarConfigId: int("pillarConfigId").notNull(),
+  dataSourceId: int("dataSourceId"),
+  /** Free-text: the field or section name in the data source */
+  sourceField: varchar("sourceField", { length: 500 }).notNull(),
+  /** The data type of the source field */
+  sourceFieldType: mysqlEnum("sourceFieldType", [
+    "string", "number", "date", "currency", "option", "boolean", "url", "other"
+  ]).default("string").notNull(),
+  /** Which template slide this binds to */
+  slideType: mysqlEnum("slideType", [
+    "title", "agenda", "exclusions", "executive_summary",
+    "initiatives_goals", "initiative_deep_dive", "launch_schedule",
+    "key_dates", "budget_update", "budget_reforecast",
+    "te", "appendix_header", "budget_detail", "appendix_content", "end_frame"
+  ]).notNull(),
+  /** The specific section/field within the slide */
+  slideSection: varchar("slideSection", { length: 500 }).notNull(),
+  /** The data type expected by the slide section */
+  slideSectionType: mysqlEnum("slideSectionType", [
+    "string", "number", "date", "currency", "picklist", "boolean", "other"
+  ]).default("string").notNull(),
+  /** Sync direction: source_to_slide, slide_to_source, or bidirectional */
+  syncDirection: mysqlEnum("syncDirection", [
+    "source_to_slide", "slide_to_source", "bidirectional"
+  ]).default("source_to_slide").notNull(),
+  /** Optional transformation or notes */
+  transformNotes: text("transformNotes"),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type FieldBinding = typeof fieldBindings.$inferSelect;
+export type InsertFieldBinding = typeof fieldBindings.$inferInsert;

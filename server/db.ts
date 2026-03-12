@@ -6,6 +6,8 @@ import {
   pillarConfigs, InsertPillarConfig,
   mbrGenerations, InsertMbrGeneration,
   generationLogs, InsertGenerationLog,
+  sourceSlideMappings, InsertSourceSlideMapping,
+  fieldBindings, InsertFieldBinding,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -80,6 +82,12 @@ export async function listDataSources(userId: number) {
   return db.select().from(dataSources).where(eq(dataSources.userId, userId)).orderBy(desc(dataSources.updatedAt));
 }
 
+export async function listDataSourcesByPillar(pillarConfigId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(dataSources).where(eq(dataSources.pillarConfigId, pillarConfigId)).orderBy(desc(dataSources.updatedAt));
+}
+
 export async function createDataSource(data: InsertDataSource) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -96,7 +104,46 @@ export async function updateDataSource(id: number, userId: number, data: Partial
 export async function deleteDataSource(id: number, userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  // Also delete associated slide mappings
+  await db.delete(sourceSlideMappings).where(eq(sourceSlideMappings.dataSourceId, id));
   await db.delete(dataSources).where(and(eq(dataSources.id, id), eq(dataSources.userId, userId)));
+}
+
+// ─── Source-Slide Mappings ─────────────────────────────────────
+
+export async function listSlideMappings(pillarConfigId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(sourceSlideMappings)
+    .where(eq(sourceSlideMappings.pillarConfigId, pillarConfigId))
+    .orderBy(sourceSlideMappings.slideType);
+}
+
+export async function listSlideMappingsBySource(dataSourceId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(sourceSlideMappings)
+    .where(eq(sourceSlideMappings.dataSourceId, dataSourceId))
+    .orderBy(sourceSlideMappings.slideType);
+}
+
+export async function createSlideMapping(data: InsertSourceSlideMapping) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(sourceSlideMappings).values(data);
+  return { id: result[0].insertId };
+}
+
+export async function updateSlideMapping(id: number, data: Partial<InsertSourceSlideMapping>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(sourceSlideMappings).set(data).where(eq(sourceSlideMappings.id, id));
+}
+
+export async function deleteSlideMapping(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(sourceSlideMappings).where(eq(sourceSlideMappings.id, id));
 }
 
 // ─── Pillar Configs ─────────────────────────────────────────────
@@ -174,4 +221,39 @@ export async function getGenerationLogs(generationId: number) {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(generationLogs).where(eq(generationLogs.generationId, generationId)).orderBy(generationLogs.createdAt);
+}
+
+// ─── Field Bindings ────────────────────────────────────────────
+
+export async function listFieldBindings(pillarConfigId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(fieldBindings)
+    .where(eq(fieldBindings.pillarConfigId, pillarConfigId))
+    .orderBy(fieldBindings.slideType);
+}
+
+export async function listAllFieldBindings() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(fieldBindings).orderBy(fieldBindings.slideType);
+}
+
+export async function createFieldBinding(data: InsertFieldBinding) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(fieldBindings).values(data);
+  return { id: result[0].insertId };
+}
+
+export async function updateFieldBinding(id: number, data: Partial<InsertFieldBinding>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(fieldBindings).set(data).where(eq(fieldBindings.id, id));
+}
+
+export async function deleteFieldBinding(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(fieldBindings).where(eq(fieldBindings.id, id));
 }
