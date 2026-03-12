@@ -1,0 +1,146 @@
+{
+  "query": "DESCRIBE autopilot_schedules;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4RxuTuBHhP2JPpU.9a12a4c771bb --database MsAJWo4JkN3ndL6jvfmLkL --execute DESCRIBE autopilot_schedules;",
+  "rows": [
+    {
+      "Field": "id",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "PRI",
+      "Default": "NULL",
+      "Extra": "auto_increment"
+    },
+    {
+      "Field": "userId",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "pillarConfigId",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "frequency",
+      "Type": "enum('daily','weekly','monthly')",
+      "Null": "NO",
+      "Key": "",
+      "Default": "monthly",
+      "Extra": ""
+    },
+    {
+      "Field": "dayOfWeekOrMonth",
+      "Type": "int",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "hour",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "",
+      "Default": "9",
+      "Extra": ""
+    },
+    {
+      "Field": "minute",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "timezone",
+      "Type": "varchar(100)",
+      "Null": "NO",
+      "Key": "",
+      "Default": "America/Los_Angeles",
+      "Extra": ""
+    },
+    {
+      "Field": "outputFolderId",
+      "Type": "varchar(255)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "isEnabled",
+      "Type": "tinyint(1)",
+      "Null": "NO",
+      "Key": "",
+      "Default": "1",
+      "Extra": ""
+    },
+    {
+      "Field": "lastRunAt",
+      "Type": "timestamp",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "lastRunStatus",
+      "Type": "enum('success','failed','running','cancelled')",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "lastRunError",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "lastRunOutputUrl",
+      "Type": "varchar(1000)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "nextRunAt",
+      "Type": "timestamp",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "createdAt",
+      "Type": "timestamp",
+      "Null": "NO",
+      "Key": "",
+      "Default": "CURRENT_TIMESTAMP",
+      "Extra": ""
+    },
+    {
+      "Field": "updatedAt",
+      "Type": "timestamp",
+      "Null": "NO",
+      "Key": "",
+      "Default": "CURRENT_TIMESTAMP",
+      "Extra": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP"
+    }
+  ],
+  "messages": [],
+  "stdout": "Field\tType\tNull\tKey\tDefault\tExtra\nid\tint\tNO\tPRI\tNULL\tauto_increment\nuserId\tint\tNO\t\tNULL\t\npillarConfigId\tint\tNO\t\tNULL\t\nfrequency\tenum('daily','weekly','monthly')\tNO\t\tmonthly\t\ndayOfWeekOrMonth\tint\tYES\t\tNULL\t\nhour\tint\tNO\t\t9\t\nminute\tint\tNO\t\t0\t\ntimezone\tvarchar(100)\tNO\t\tAmerica/Los_Angeles\t\noutputFolderId\tvarchar(255)\tYES\t\tNULL\t\nisEnabled\ttinyint(1)\tNO\t\t1\t\nlastRunAt\ttimestamp\tYES\t\tNULL\t\nlastRunStatus\tenum('success','failed','running','cancelled')\tYES\t\tNULL\t\nlastRunError\ttext\tYES\t\tNULL\t\nlastRunOutputUrl\tvarchar(1000)\tYES\t\tNULL\t\nnextRunAt\ttimestamp\tYES\t\tNULL\t\ncreatedAt\ttimestamp\tNO\t\tCURRENT_TIMESTAMP\t\nupdatedAt\ttimestamp\tNO\t\tCURRENT_TIMESTAMP\tDEFAULT_GENERATED on update CURRENT_TIMESTAMP\n",
+  "stderr": "",
+  "execution_time_ms": 60
+}

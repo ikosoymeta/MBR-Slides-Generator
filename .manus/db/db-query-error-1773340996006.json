@@ -1,0 +1,8 @@
+{
+  "query": "SELECT id, pillar_config_id, user_id, frequency, hour, minute, day_of_week_or_month, is_enabled, last_run_status FROM autopilot_schedules;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4RxuTuBHhP2JPpU.9a12a4c771bb --database MsAJWo4JkN3ndL6jvfmLkL --execute SELECT id, pillar_config_id, user_id, frequency, hour, minute, day_of_week_or_month, is_enabled, last_run_status FROM autopilot_schedules;",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 1: Unknown column 'pillar_config_id' in 'field list'"
+  ]
+}

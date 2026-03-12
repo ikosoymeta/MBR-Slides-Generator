@@ -131,3 +131,13 @@
 - [ ] Add Error Log navigation entry to sidebar
 - [ ] Wire error logging into Autopilot pipeline, slide generator, and data fetching
 - [x] BUG FIX: autopilotSchedules.lastRun query returns undefined causing tRPC/React Query error
+- [x] E2E test: Create autopilot schedule for a pillar, verify persistence, then delete and confirm cleanup
+- [ ] Create comprehensive user manual covering all features
+- [ ] Capture screenshots of all key pages for the manual
+- [ ] Generate PDF version of user manual
+- [ ] Create training video script and produce training video
+- [x] REDESIGN: Autopilot should be a single global schedule (not per-pillar)
+- [x] REDESIGN: All pillar slides generated in one output location
+- [x] REDESIGN: Output organized in folders named "MBR Slide Deck March 12th, 2026" (full date with ordinal)
+- [x] REDESIGN: Update Autopilot UI for single schedule model
+- [x] REDESIGN: Update DashboardLayout status indicator for single schedule

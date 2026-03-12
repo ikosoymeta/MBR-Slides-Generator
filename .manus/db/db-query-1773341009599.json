@@ -1,0 +1,29 @@
+{
+  "query": "SELECT * FROM autopilot_schedules LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4RxuTuBHhP2JPpU.9a12a4c771bb --database MsAJWo4JkN3ndL6jvfmLkL --execute SELECT * FROM autopilot_schedules LIMIT 5;",
+  "rows": [
+    {
+      "id": "1",
+      "userId": "1",
+      "pillarConfigId": "1",
+      "frequency": "monthly",
+      "dayOfWeekOrMonth": "1",
+      "hour": "9",
+      "minute": "0",
+      "timezone": "America/Los_Angeles",
+      "outputFolderId": "NULL",
+      "isEnabled": "1",
+      "lastRunAt": "NULL",
+      "lastRunStatus": "NULL",
+      "lastRunError": "NULL",
+      "lastRunOutputUrl": "NULL",
+      "nextRunAt": "NULL",
+      "createdAt": "2026-03-12 18:42:37",
+      "updatedAt": "2026-03-12 18:42:37"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tuserId\tpillarConfigId\tfrequency\tdayOfWeekOrMonth\thour\tminute\ttimezone\toutputFolderId\tisEnabled\tlastRunAt\tlastRunStatus\tlastRunError\tlastRunOutputUrl\tnextRunAt\tcreatedAt\tupdatedAt\n1\t1\t1\tmonthly\t1\t9\t0\tAmerica/Los_Angeles\tNULL\t1\tNULL\tNULL\tNULL\tNULL\tNULL\t2026-03-12 18:42:37\t2026-03-12 18:42:37\n",
+  "stderr": "",
+  "execution_time_ms": 54
+}

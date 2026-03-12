@@ -140,7 +140,7 @@ function AutopilotStatusIndicator() {
         <Tooltip>
           <TooltipTrigger asChild>
             <button
-              onClick={() => setLocation("/generate")}
+              onClick={() => setLocation("/autopilot")}
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
             >
               {getStatusIcon()}

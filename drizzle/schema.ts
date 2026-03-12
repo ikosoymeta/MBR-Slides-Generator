@@ -164,11 +164,12 @@ export const fieldBindings = mysqlTable("field_bindings", {
 export type FieldBinding = typeof fieldBindings.$inferSelect;
 export type InsertFieldBinding = typeof fieldBindings.$inferInsert;
 
-/** Autopilot schedule configurations */
+/** Autopilot schedule configurations — single global schedule (generates all pillars) */
 export const autopilotSchedules = mysqlTable("autopilot_schedules", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull(),
-  pillarConfigId: int("pillarConfigId").notNull(),
+  /** Nullable — null means global (all pillars) */
+  pillarConfigId: int("pillarConfigId"),
   /** Schedule frequency */
   frequency: mysqlEnum("frequency", ["daily", "weekly", "monthly"]).default("monthly").notNull(),
   /** Day of week for weekly (0=Sun..6=Sat), day of month for monthly (1-28) */
@@ -179,8 +180,10 @@ export const autopilotSchedules = mysqlTable("autopilot_schedules", {
   minute: int("minute").default(0).notNull(),
   /** Timezone string e.g. 'America/Los_Angeles' */
   timezone: varchar("timezone", { length: 100 }).default("America/Los_Angeles").notNull(),
-  /** Output folder ID for generated decks */
+  /** Root output folder ID for generated decks */
   outputFolderId: varchar("outputFolderId", { length: 255 }),
+  /** Folder naming format, e.g. 'MBR Slide Deck {month} {day}, {year}' */
+  folderNameFormat: varchar("folderNameFormat", { length: 500 }).default("MBR Slide Deck {month} {day}, {year}"),
   /** Whether this schedule is enabled */
   isEnabled: boolean("isEnabled").default(true).notNull(),
   /** Last run timestamp */

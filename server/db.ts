@@ -268,41 +268,25 @@ export async function deleteFieldBinding(id: number) {
   await db.delete(fieldBindings).where(eq(fieldBindings.id, id));
 }
 
-// ─── Autopilot Schedules ────────────────────────────────────────────
+// ─── Autopilot Schedules (Single Global Schedule) ──────────────────────
 
-export async function listAutopilotSchedules(userId: number) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(autopilotSchedules)
-    .where(eq(autopilotSchedules.userId, userId))
-    .orderBy(desc(autopilotSchedules.updatedAt));
-}
-
-export async function getAutopilotSchedule(id: number) {
-  const db = await getDb();
-  if (!db) return undefined;
-  const result = await db.select().from(autopilotSchedules).where(eq(autopilotSchedules.id, id)).limit(1);
-  return result[0];
-}
-
-export async function getScheduleByPillar(pillarConfigId: number, userId: number) {
+/** Get the single global autopilot schedule for a user */
+export async function getGlobalSchedule(userId: number) {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select().from(autopilotSchedules)
-    .where(and(eq(autopilotSchedules.pillarConfigId, pillarConfigId), eq(autopilotSchedules.userId, userId)))
+    .where(eq(autopilotSchedules.userId, userId))
     .limit(1);
   return result[0];
 }
 
-export async function upsertAutopilotSchedule(data: InsertAutopilotSchedule) {
+/** Upsert the single global schedule (one per user) */
+export async function upsertGlobalSchedule(data: InsertAutopilotSchedule) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  // Check if schedule exists for this pillar+user
   const existing = await db.select().from(autopilotSchedules)
-    .where(and(
-      eq(autopilotSchedules.pillarConfigId, data.pillarConfigId),
-      eq(autopilotSchedules.userId, data.userId)
-    )).limit(1);
+    .where(eq(autopilotSchedules.userId, data.userId))
+    .limit(1);
   if (existing.length > 0) {
     await db.update(autopilotSchedules).set(data).where(eq(autopilotSchedules.id, existing[0].id));
     return { id: existing[0].id };
@@ -311,25 +295,24 @@ export async function upsertAutopilotSchedule(data: InsertAutopilotSchedule) {
   return { id: result[0].insertId };
 }
 
-export async function updateAutopilotSchedule(id: number, data: Partial<InsertAutopilotSchedule>) {
+export async function updateGlobalSchedule(id: number, data: Partial<InsertAutopilotSchedule>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(autopilotSchedules).set(data).where(eq(autopilotSchedules.id, id));
 }
 
-export async function deleteAutopilotSchedule(id: number) {
+export async function deleteGlobalSchedule(userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.delete(autopilotSchedules).where(eq(autopilotSchedules.id, id));
+  await db.delete(autopilotSchedules).where(eq(autopilotSchedules.userId, userId));
 }
 
-/** Get the most recent autopilot run across all schedules for a user */
+/** Get the last autopilot run info for a user */
 export async function getLastAutopilotRun(userId: number) {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select().from(autopilotSchedules)
     .where(eq(autopilotSchedules.userId, userId))
-    .orderBy(desc(autopilotSchedules.lastRunAt))
     .limit(1);
   return result[0];
 }

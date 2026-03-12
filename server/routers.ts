@@ -606,52 +606,54 @@ Always use professional business language suitable for executive presentations. 
 
   // ─── Autopilot Schedules ────────────────────────────────────────────
   autopilotSchedules: router({
-    list: protectedProcedure.query(({ ctx }) =>
-      db.listAutopilotSchedules(ctx.user.id)
-    ),
-    getByPillar: protectedProcedure
-      .input(z.object({ pillarConfigId: z.number() }))
-      .query(async ({ ctx, input }) => {
-        const result = await db.getScheduleByPillar(input.pillarConfigId, ctx.user.id);
-        return result ?? null;
-      }),
+    /** Get the single global schedule for the current user */
+    get: protectedProcedure.query(async ({ ctx }) => {
+      const result = await db.getGlobalSchedule(ctx.user.id);
+      return result ?? null;
+    }),
+    /** Create or update the single global schedule */
     upsert: protectedProcedure
       .input(z.object({
-        pillarConfigId: z.number(),
         frequency: z.enum(["daily", "weekly", "monthly"]),
         dayOfWeekOrMonth: z.number().optional(),
         hour: z.number().min(0).max(23),
         minute: z.number().min(0).max(59),
         timezone: z.string().default("America/Los_Angeles"),
         outputFolderId: z.string().optional(),
+        folderNameFormat: z.string().default("MBR Slide Deck {month} {day}, {year}"),
         isEnabled: z.boolean().default(true),
       }))
       .mutation(async ({ ctx, input }) => {
-        const result = await db.upsertAutopilotSchedule({
+        const result = await db.upsertGlobalSchedule({
           userId: ctx.user.id,
-          pillarConfigId: input.pillarConfigId,
+          pillarConfigId: null,
           frequency: input.frequency,
           dayOfWeekOrMonth: input.dayOfWeekOrMonth ?? null,
           hour: input.hour,
           minute: input.minute,
           timezone: input.timezone,
           outputFolderId: input.outputFolderId ?? null,
+          folderNameFormat: input.folderNameFormat,
           isEnabled: input.isEnabled,
         });
         return result;
       }),
+    /** Toggle enabled/disabled */
     toggleEnabled: protectedProcedure
-      .input(z.object({ id: z.number(), isEnabled: z.boolean() }))
-      .mutation(async ({ input }) => {
-        await db.updateAutopilotSchedule(input.id, { isEnabled: input.isEnabled });
+      .input(z.object({ isEnabled: z.boolean() }))
+      .mutation(async ({ ctx, input }) => {
+        const schedule = await db.getGlobalSchedule(ctx.user.id);
+        if (!schedule) throw new TRPCError({ code: "NOT_FOUND", message: "No schedule found" });
+        await db.updateGlobalSchedule(schedule.id, { isEnabled: input.isEnabled });
         return { success: true };
       }),
+    /** Delete the global schedule */
     delete: protectedProcedure
-      .input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => {
-        await db.deleteAutopilotSchedule(input.id);
+      .mutation(async ({ ctx }) => {
+        await db.deleteGlobalSchedule(ctx.user.id);
         return { success: true };
       }),
+    /** Get last run info */
     lastRun: protectedProcedure.query(async ({ ctx }) => {
       const result = await db.getLastAutopilotRun(ctx.user.id);
       return result ?? null;
