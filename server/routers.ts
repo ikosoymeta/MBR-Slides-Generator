@@ -6,6 +6,7 @@ import { z } from "zod";
 import * as db from "./db";
 import * as google from "./services/google";
 import { generateMbrDeck } from "./services/slideGenerator";
+import { runAutopilotCollection } from "./services/autopilot";
 import { GOOGLE_IDS, PILLAR_TEAMS } from "../shared/types";
 import { invokeLLM } from "./_core/llm";
 
@@ -291,6 +292,22 @@ export const appRouter = router({
           });
           throw error;
         }
+      }),
+
+    /** Autopilot: run all data source agents, synthesize, detect conflicts */
+    autopilotCollect: protectedProcedure
+      .input(z.object({
+        pillarName: z.string(),
+        month: z.number().min(1).max(12),
+        year: z.number().min(2024).max(2028),
+        projectName: z.string().optional(),
+        planningDocId: z.string().optional(),
+        outputFolderId: z.string(),
+        autoFileToStaging: z.boolean().default(false),
+      }))
+      .mutation(async ({ input }) => {
+        const result = await runAutopilotCollection(input);
+        return result;
       }),
 
     /** AI chat for guided interview-style slide content creation */

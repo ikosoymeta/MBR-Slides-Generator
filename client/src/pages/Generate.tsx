@@ -63,6 +63,18 @@ import {
   Folder,
   FolderOpen,
   CalendarIcon,
+  Zap,
+  AlertTriangle,
+  CheckCircle,
+  XCircle,
+  Clock,
+  Database,
+  FileText,
+  BarChart3,
+  Bot,
+  ArrowRight,
+  Shield,
+  Play,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { Streamdown } from "streamdown";
@@ -448,7 +460,7 @@ function SlidePreviewCard({
 export default function Generate() {
   const [, setLocation] = useLocation();
   const [currentStep, setCurrentStep] = useState<"configure" | "slides" | "preview" | "generating" | "done">("configure");
-  const [inputMode, setInputMode] = useState<"project" | "manual" | "ai">("project");
+  const [inputMode, setInputMode] = useState<"project" | "manual" | "ai" | "autopilot">("project");
 
   // Shared config
   const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()));
@@ -469,6 +481,12 @@ export default function Generate() {
   // AI Chat mode
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
+
+  // Autopilot mode
+  const [autopilotStep, setAutopilotStep] = useState<"idle" | "collecting" | "conflicts" | "review" | "ready">("idle");
+  const [autopilotResult, setAutopilotResult] = useState<any>(null);
+  const [conflictResolutions, setConflictResolutions] = useState<Record<string, string>>({});
+  const [autopilotEditedContent, setAutopilotEditedContent] = useState<any>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Slide builder state
@@ -511,6 +529,23 @@ export default function Generate() {
     onError: (err) => {
       setCurrentStep("slides");
       toast.error(`Generation failed: ${err.message}`);
+    },
+  });
+
+  const autopilotMutation = trpc.mbr.autopilotCollect.useMutation({
+    onSuccess: (result) => {
+      setAutopilotResult(result);
+      setAutopilotEditedContent(result.synthesizedContent);
+      if (result.conflicts.length > 0) {
+        setAutopilotStep("conflicts");
+      } else {
+        setAutopilotStep("review");
+        toast.success("All agents completed — no conflicts detected. Auto-filing to staging.");
+      }
+    },
+    onError: (err) => {
+      setAutopilotStep("idle");
+      toast.error(`Autopilot failed: ${err.message}`);
     },
   });
 
@@ -672,7 +707,7 @@ export default function Generate() {
       outputFolderId,
       customTitle: customTitle || undefined,
       selectedSlides: selectedSlideIndices,
-      manualContent: inputMode === "manual" ? {
+      manualContent: (inputMode === "manual" || inputMode === "autopilot") ? {
         executiveSummary: manualExecSummary || undefined,
         initiatives: manualInitiatives.length > 0 ? manualInitiatives : undefined,
         launchItems: manualLaunchItems.length > 0 ? manualLaunchItems : undefined,
@@ -690,8 +725,58 @@ export default function Generate() {
   const canProceedToSlides = useMemo(() => {
     if (inputMode === "project") return !!(selectedProject || manualProjectName.trim());
     if (inputMode === "manual") return !!selectedPillar;
+    if (inputMode === "autopilot") return autopilotStep === "ready";
     return !!selectedPillar; // AI mode
-  }, [inputMode, selectedProject, manualProjectName, selectedPillar]);
+  }, [inputMode, selectedProject, manualProjectName, selectedPillar, autopilotStep]);
+
+  const handleStartAutopilot = useCallback(() => {
+    if (!selectedPillar) {
+      toast.error("Please select a pillar first.");
+      return;
+    }
+    if (!outputFolderId) {
+      toast.error("Please select an output folder first.");
+      return;
+    }
+    const pillarConfig = pillarConfigs?.find((p) => p.pillarName === selectedPillar);
+    setAutopilotStep("collecting");
+    autopilotMutation.mutate({
+      pillarName: selectedPillar,
+      month: selectedMonth,
+      year: parseInt(selectedYear),
+      projectName: selectedProject || manualProjectName.trim() || undefined,
+      planningDocId: pillarConfig?.planningDocId || undefined,
+      outputFolderId,
+      autoFileToStaging: true,
+    });
+  }, [selectedPillar, outputFolderId, selectedMonth, selectedYear, selectedProject, manualProjectName, pillarConfigs, autopilotMutation]);
+
+  const handleResolveConflicts = useCallback(() => {
+    setAutopilotStep("review");
+  }, []);
+
+  const handleAutopilotProceed = useCallback(() => {
+    // Transfer autopilot content to manual fields for generation
+    if (autopilotEditedContent) {
+      setManualExecSummary(autopilotEditedContent.executiveSummary || "");
+      if (autopilotEditedContent.initiatives?.length > 0) {
+        setManualInitiatives(autopilotEditedContent.initiatives.map((i: any) => ({
+          name: i.name || "",
+          outcome: i.outcome || "",
+          updates: i.progressVsTarget || "",
+          risks: i.kpiTarget || "",
+        })));
+      }
+      if (autopilotEditedContent.launchItems?.length > 0) {
+        setManualLaunchItems(autopilotEditedContent.launchItems.map((l: any) => ({
+          date: l.date || "",
+          title: l.title || "",
+          quarter: l.quarter || "Q1",
+        })));
+      }
+    }
+    setAutopilotStep("ready");
+  }, [autopilotEditedContent]);
 
   // ─── Step: Generating ───────────────────────────────────────────
 
@@ -1176,7 +1261,12 @@ export default function Generate() {
 
         {/* Input Mode Tabs */}
         <Tabs value={inputMode} onValueChange={(v) => setInputMode(v as any)}>
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="autopilot" className="gap-2">
+              <Zap className="h-4 w-4" />
+              <span className="hidden sm:inline">Autopilot</span>
+              <span className="sm:hidden">Auto</span>
+            </TabsTrigger>
             <TabsTrigger value="project" className="gap-2">
               <FileSpreadsheet className="h-4 w-4" />
               <span className="hidden sm:inline">From Project</span>
@@ -1543,6 +1633,350 @@ export default function Generate() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* ─── Mode 4: Autopilot ─── */}
+          <TabsContent value="autopilot" className="space-y-4 mt-4">
+            {/* Autopilot: Idle */}
+            {autopilotStep === "idle" && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Zap className="h-5 w-5 text-amber-500" />
+                    Autopilot Mode
+                  </CardTitle>
+                  <CardDescription>
+                    Automatically collect data from all sources, detect conflicts, and assemble your MBR deck. You review the final output before generation.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Pipeline diagram */}
+                  <div className="rounded-lg border bg-muted/30 p-6">
+                    <div className="grid grid-cols-3 gap-4 items-center">
+                      {/* Data Source Agents */}
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Data Source Agents</p>
+                        {[
+                          { icon: Database, label: "Finance Data", color: "text-blue-500" },
+                          { icon: BarChart3, label: "Budget Tracker", color: "text-green-500" },
+                          { icon: FileText, label: "Planning Doc", color: "text-purple-500" },
+                          { icon: CalendarIcon, label: "Content Calendar", color: "text-orange-500" },
+                          { icon: FileSpreadsheet, label: "Master Summary", color: "text-cyan-500" },
+                          { icon: Folder, label: "Project Data", color: "text-pink-500" },
+                        ].map(({ icon: Icon, label, color }) => (
+                          <div key={label} className="flex items-center gap-2 rounded-md border bg-background px-3 py-1.5 text-sm">
+                            <Icon className={`h-3.5 w-3.5 ${color}`} />
+                            <span>{label}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* MBR Controller */}
+                      <div className="flex flex-col items-center gap-3">
+                        <ArrowRight className="h-5 w-5 text-muted-foreground" />
+                        <div className="rounded-lg border-2 border-amber-500/50 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 text-center">
+                          <Bot className="h-6 w-6 text-amber-600 mx-auto mb-1" />
+                          <p className="font-semibold text-sm">MBR Controller</p>
+                          <p className="text-xs text-muted-foreground">Gatekeeper</p>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Shield className="h-3.5 w-3.5" />
+                          <span>Conflict Detection</span>
+                        </div>
+                        <ArrowRight className="h-5 w-5 text-muted-foreground" />
+                      </div>
+
+                      {/* Output Agents */}
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Output Agents</p>
+                        {[
+                          { icon: LayoutGrid, label: "Deck Generator", color: "text-blue-600", active: true },
+                          { icon: FileText, label: "Planning Doc Writer", color: "text-gray-400", active: false },
+                          { icon: FileSpreadsheet, label: "Fact Pack Builder", color: "text-gray-400", active: false },
+                        ].map(({ icon: Icon, label, color, active }) => (
+                          <div key={label} className={`flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm ${active ? 'bg-background' : 'bg-muted/50 opacity-60'}`}>
+                            <Icon className={`h-3.5 w-3.5 ${color}`} />
+                            <span>{label}</span>
+                            {!active && <Badge variant="outline" className="ml-auto text-[10px] py-0">Soon</Badge>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <Button size="lg" className="w-full gap-2" onClick={handleStartAutopilot} disabled={!selectedPillar || !outputFolderId}>
+                    <Play className="h-4 w-4" />
+                    Launch Autopilot Collection
+                  </Button>
+                  {(!selectedPillar || !outputFolderId) && (
+                    <p className="text-xs text-muted-foreground text-center">
+                      {!selectedPillar ? "Select a pillar above to start" : "Select an output folder above to start"}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Autopilot: Collecting */}
+            {autopilotStep === "collecting" && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Loader2 className="h-5 w-5 animate-spin text-amber-500" />
+                    Agents Collecting Data...
+                  </CardTitle>
+                  <CardDescription>Running all data source agents in parallel. This may take a moment.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {[
+                      "Finance Data Agent",
+                      "Budget Tracker Agent",
+                      "Planning Doc Collector",
+                      "Content Calendar Agent",
+                      "Master Summary Agent",
+                      "Project Data Agent",
+                    ].map((name) => {
+                      const agentResult = autopilotResult?.agents?.find((a: any) => a.agentName === name);
+                      const status = agentResult?.status || "pending";
+                      return (
+                        <div key={name} className="flex items-center justify-between rounded-md border px-4 py-2">
+                          <div className="flex items-center gap-2">
+                            {status === "done" && <CheckCircle className="h-4 w-4 text-green-500" />}
+                            {status === "error" && <XCircle className="h-4 w-4 text-red-500" />}
+                            {status === "skipped" && <Clock className="h-4 w-4 text-gray-400" />}
+                            {status === "pending" && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                            <span className="text-sm">{name}</span>
+                          </div>
+                          {agentResult && (
+                            <span className="text-xs text-muted-foreground">
+                              {status === "done" && `${agentResult.dataPoints} data points · ${agentResult.durationMs}ms`}
+                              {status === "error" && agentResult.error}
+                              {status === "skipped" && "Skipped"}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Autopilot: Conflicts */}
+            {autopilotStep === "conflicts" && autopilotResult && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5 text-amber-500" />
+                    Conflicts Detected ({autopilotResult.conflicts.length})
+                  </CardTitle>
+                  <CardDescription>
+                    The MBR Controller found data conflicts between sources. Please review and resolve each one before proceeding.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {autopilotResult.conflicts.map((conflict: any) => (
+                    <div key={conflict.id} className="rounded-lg border p-4 space-y-3">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="font-medium text-sm">{conflict.description}</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Sources: {conflict.sources.join(" vs ")}
+                          </p>
+                        </div>
+                        <Badge variant={conflict.severity === "high" ? "destructive" : "secondary"}>
+                          {conflict.severity}
+                        </Badge>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        {conflict.values.map((val: any, idx: number) => (
+                          <button
+                            key={idx}
+                            onClick={() => setConflictResolutions(prev => ({ ...prev, [conflict.id]: val.source }))}
+                            className={`rounded-md border p-3 text-left text-sm transition-colors ${
+                              conflictResolutions[conflict.id] === val.source
+                                ? "border-primary bg-primary/5"
+                                : "hover:bg-muted/50"
+                            }`}
+                          >
+                            <p className="font-medium text-xs text-muted-foreground">{val.source}</p>
+                            <p className="mt-1">{typeof val.value === "object" ? JSON.stringify(val.value) : String(val.value)}</p>
+                          </button>
+                        ))}
+                      </div>
+                      {conflict.suggestedResolution && (
+                        <p className="text-xs text-muted-foreground italic">
+                          Suggestion: {conflict.suggestedResolution}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+
+                  <div className="flex gap-3 pt-2">
+                    <Button variant="outline" onClick={() => setAutopilotStep("idle")} className="gap-2">
+                      <ArrowLeft className="h-4 w-4" /> Re-run Agents
+                    </Button>
+                    <Button onClick={handleResolveConflicts} className="flex-1 gap-2">
+                      <CheckCircle className="h-4 w-4" />
+                      {Object.keys(conflictResolutions).length === autopilotResult.conflicts.length
+                        ? "Apply Resolutions & Continue"
+                        : "Skip Unresolved & Continue"}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Autopilot: Review */}
+            {autopilotStep === "review" && autopilotEditedContent && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Eye className="h-5 w-5 text-blue-500" />
+                    Review Synthesized Content
+                  </CardTitle>
+                  <CardDescription>
+                    The MBR Controller assembled this content from all data sources. Edit anything before proceeding to slide generation.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Agent Summary */}
+                  {autopilotResult?.agents && (
+                    <div className="flex flex-wrap gap-2">
+                      {autopilotResult.agents.map((a: any) => (
+                        <Badge
+                          key={a.agentName}
+                          variant={a.status === "done" ? "default" : a.status === "error" ? "destructive" : "secondary"}
+                          className="gap-1"
+                        >
+                          {a.status === "done" && <CheckCircle className="h-3 w-3" />}
+                          {a.status === "error" && <XCircle className="h-3 w-3" />}
+                          {a.status === "skipped" && <Clock className="h-3 w-3" />}
+                          {a.agentName}: {a.dataPoints} pts
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Executive Summary */}
+                  <div className="space-y-2">
+                    <Label className="font-semibold">Executive Summary</Label>
+                    <Textarea
+                      value={autopilotEditedContent.executiveSummary || ""}
+                      onChange={(e) => setAutopilotEditedContent((prev: any) => ({ ...prev, executiveSummary: e.target.value }))}
+                      rows={5}
+                      className="text-sm"
+                    />
+                  </div>
+
+                  {/* Initiatives */}
+                  {autopilotEditedContent.initiatives?.length > 0 && (
+                    <div className="space-y-3">
+                      <Label className="font-semibold">Initiatives ({autopilotEditedContent.initiatives.length})</Label>
+                      {autopilotEditedContent.initiatives.map((init: any, idx: number) => (
+                        <div key={idx} className="rounded-md border p-3 space-y-2">
+                          <Input
+                            value={init.name || ""}
+                            onChange={(e) => {
+                              const updated = [...autopilotEditedContent.initiatives];
+                              updated[idx] = { ...updated[idx], name: e.target.value };
+                              setAutopilotEditedContent((prev: any) => ({ ...prev, initiatives: updated }));
+                            }}
+                            placeholder="Initiative name"
+                            className="font-medium"
+                          />
+                          <div className="grid grid-cols-2 gap-2">
+                            <Textarea
+                              value={init.outcome || ""}
+                              onChange={(e) => {
+                                const updated = [...autopilotEditedContent.initiatives];
+                                updated[idx] = { ...updated[idx], outcome: e.target.value };
+                                setAutopilotEditedContent((prev: any) => ({ ...prev, initiatives: updated }));
+                              }}
+                              placeholder="Business Outcome"
+                              rows={2}
+                              className="text-sm"
+                            />
+                            <Textarea
+                              value={init.progressVsTarget || ""}
+                              onChange={(e) => {
+                                const updated = [...autopilotEditedContent.initiatives];
+                                updated[idx] = { ...updated[idx], progressVsTarget: e.target.value };
+                                setAutopilotEditedContent((prev: any) => ({ ...prev, initiatives: updated }));
+                              }}
+                              placeholder="Progress vs Target"
+                              rows={2}
+                              className="text-sm"
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Launch Items */}
+                  {autopilotEditedContent.launchItems?.length > 0 && (
+                    <div className="space-y-3">
+                      <Label className="font-semibold">Launch Schedule ({autopilotEditedContent.launchItems.length})</Label>
+                      {autopilotEditedContent.launchItems.map((launch: any, idx: number) => (
+                        <div key={idx} className="flex items-center gap-2 rounded-md border p-2">
+                          <Input value={launch.date || ""} onChange={(e) => {
+                            const updated = [...autopilotEditedContent.launchItems];
+                            updated[idx] = { ...updated[idx], date: e.target.value };
+                            setAutopilotEditedContent((prev: any) => ({ ...prev, launchItems: updated }));
+                          }} className="w-32 text-sm" />
+                          <Input value={launch.title || ""} onChange={(e) => {
+                            const updated = [...autopilotEditedContent.launchItems];
+                            updated[idx] = { ...updated[idx], title: e.target.value };
+                            setAutopilotEditedContent((prev: any) => ({ ...prev, launchItems: updated }));
+                          }} className="flex-1 text-sm" />
+                          <Badge variant="outline">{launch.quarter}</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Budget Summary */}
+                  {autopilotEditedContent.budgetSummary && (
+                    <div className="space-y-2">
+                      <Label className="font-semibold">Budget Summary</Label>
+                      <Textarea
+                        value={autopilotEditedContent.budgetSummary || ""}
+                        onChange={(e) => setAutopilotEditedContent((prev: any) => ({ ...prev, budgetSummary: e.target.value }))}
+                        rows={3}
+                        className="text-sm"
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex gap-3 pt-2">
+                    <Button variant="outline" onClick={() => setAutopilotStep("idle")} className="gap-2">
+                      <ArrowLeft className="h-4 w-4" /> Start Over
+                    </Button>
+                    <Button onClick={handleAutopilotProceed} className="flex-1 gap-2">
+                      <CheckCircle className="h-4 w-4" />
+                      Approve & Proceed to Slides
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Autopilot: Ready */}
+            {autopilotStep === "ready" && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <CheckCircle className="h-5 w-5 text-green-500" />
+                    Content Approved
+                  </CardTitle>
+                  <CardDescription>
+                    Autopilot content has been loaded into the slide builder. Click "Next: Build Slides" to continue.
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+            )}
+          </TabsContent>
         </Tabs>
 
         {/* Next step button */}
@@ -1554,6 +1988,11 @@ export default function Generate() {
             {inputMode === "manual" && selectedPillar && "Ready to build slides"}
             {inputMode === "ai" && !selectedPillar && "Select a pillar to continue"}
             {inputMode === "ai" && selectedPillar && "Ready to build slides"}
+            {inputMode === "autopilot" && autopilotStep === "idle" && "Launch autopilot to collect data automatically"}
+            {inputMode === "autopilot" && autopilotStep === "collecting" && "Agents are collecting data..."}
+            {inputMode === "autopilot" && autopilotStep === "conflicts" && "Resolve conflicts to continue"}
+            {inputMode === "autopilot" && autopilotStep === "review" && "Review and approve content to continue"}
+            {inputMode === "autopilot" && autopilotStep === "ready" && "Content approved — ready to build slides"}
           </p>
           <Button
             size="lg"

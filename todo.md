@@ -58,3 +58,12 @@
 - [x] Slide preview cards should visually match the actual Google Slides template theme (dark title, orange headers, green DRI boxes, etc.)
 - [x] Add link to the output folder where MBR deck will be created
 - [x] Add link to access the generated MBR deck after creation
+- [x] Autopilot Mode: New tab in Generate page alongside existing From Project/Manual/AI Chat modes
+- [x] Autopilot: Data Source Agents - parallel data collection from configured Google Sheets/Docs
+- [x] Autopilot: MBR Controller (Gatekeeper) - synthesize agent outputs into structured MBR sections
+- [x] Autopilot: Conflict Detection - identify mismatches between data sources
+- [x] Autopilot: Conflict Resolution UI - escalate conflicts to user or auto-file to staging
+- [x] Autopilot: Pipeline visualization showing agent status (running/done/error)
+- [x] Autopilot: Review step - user reviews assembled content before final generation
+- [x] Autopilot: Auto-file to staging folder when no conflicts detected
+- [x] Autopilot: Output agents - Deck Generator, Planning Doc Writer (future), Fact Pack Builder (future)
