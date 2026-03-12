@@ -152,7 +152,14 @@ export const appRouter = router({
         team: z.string().optional(),
         year: z.string().optional(),
       }))
-      .query(({ input }) => google.fetchProjectNames(input.pillar, input.team, input.year)),
+      .query(async ({ input }) => {
+        try {
+          return await google.fetchProjectNames(input.pillar, input.team, input.year);
+        } catch (e: any) {
+          console.warn("[GWS Fallback] fetchProjectNames failed:", e.message?.substring(0, 100));
+          return []; // Return empty - frontend will show manual entry option
+        }
+      }),
     fetchProjectData: protectedProcedure
       .input(z.object({ projectName: z.string() }))
       .query(({ input }) => google.fetchProjectData(input.projectName)),
@@ -189,6 +196,7 @@ export const appRouter = router({
       .input(z.object({
         pillarConfigId: z.number(),
         pillarName: z.string(),
+        projectName: z.string().optional(),
         month: z.number().min(1).max(12),
         year: z.number().min(2024).max(2028),
         teams: z.array(z.string()),

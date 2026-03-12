@@ -48,3 +48,9 @@
 - [ ] Preview option: show slide-by-slide preview of content before generating final deck
 - [ ] Handle chart/graph data in template slides (Sheets-linked charts or embedded chart data)
 - [ ] End-to-end test: generate a real MBR deck and verify output in Google Slides
+- [x] BUG FIX: No projects found for any pillar - fetchProjectNames failing (GWS token issue fixed)
+- [x] Feature: Manual project name entry when no projects found from data source
+- [x] BUG FIX: Output folder not listing existing year folders from Google Drive (added manual folder ID fallback)
+- [x] Slide previews should match the actual Google Slides template layout/content
+- [x] Launch date field should be a date picker instead of text input
+- [x] BUG FIX: Next: Build Slides button click intercepted by Preview mode banner (z-index fix)

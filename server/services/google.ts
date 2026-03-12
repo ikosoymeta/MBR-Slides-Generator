@@ -17,11 +17,13 @@ const TOKEN_FILE = "/tmp/gws_token.txt";
 
 function getFreshEnv(): Record<string, string> {
   const env: Record<string, string> = { ...process.env as Record<string, string> };
-  // The platform injects the token at process creation time.
-  // When refreshed, we write the new token to /tmp/gws_token.txt.
-  // Cache for 30 seconds to avoid file I/O overhead.
+  // Token priority:
+  // 1. /tmp/gws_token.txt (always re-read every 5s)
+  // 2. GOOGLE_DRIVE_TOKEN env var (works for both Drive and Sheets)
+  // 3. GOOGLE_WORKSPACE_CLI_TOKEN env var (may be stale)
   const now = Date.now();
-  if (!_cachedToken || now - _tokenFetchedAt > 30_000) {
+  if (now - _tokenFetchedAt > 5_000) {
+    _cachedToken = null; // Force re-read
     try {
       const raw = readFileSync(TOKEN_FILE, "utf-8").trim();
       if (raw && raw.length > 20) {
@@ -29,8 +31,15 @@ function getFreshEnv(): Record<string, string> {
         _tokenFetchedAt = now;
       }
     } catch {
-      // Fallback: try process.env
-      if (process.env.GOOGLE_WORKSPACE_CLI_TOKEN) {
+      // Token file not found, try env vars
+    }
+    // If no token from file, try GOOGLE_DRIVE_TOKEN first (it's more reliable)
+    if (!_cachedToken) {
+      const driveToken = process.env.GOOGLE_DRIVE_TOKEN;
+      if (driveToken && driveToken.length > 20) {
+        _cachedToken = driveToken;
+        _tokenFetchedAt = now;
+      } else if (process.env.GOOGLE_WORKSPACE_CLI_TOKEN) {
         _cachedToken = process.env.GOOGLE_WORKSPACE_CLI_TOKEN;
         _tokenFetchedAt = now;
       }

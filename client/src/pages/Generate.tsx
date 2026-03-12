@@ -22,6 +22,8 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -60,6 +62,7 @@ import {
   ArrowDown,
   Folder,
   FolderOpen,
+  CalendarIcon,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { Streamdown } from "streamdown";
@@ -74,23 +77,23 @@ const MONTHS = [
 
 const YEARS = ["2024", "2025", "2026", "2027", "2028"];
 
-/** Template slide definitions */
+/** Template slide definitions — mirrors the actual Google Slides template (15 slides) */
 const TEMPLATE_SLIDES = [
-  { index: 0, type: "title", name: "Title Slide", icon: "📄", description: "Pillar name, month, and year header", dataSource: "Auto-populated from config", required: true },
-  { index: 1, type: "agenda", name: "Agenda", icon: "📋", description: "Meeting agenda items", dataSource: "Static template", required: false },
-  { index: 2, type: "exclusions", name: "Template Exclusions", icon: "🚫", description: "What this MBR will not cover", dataSource: "Static template", required: false },
-  { index: 3, type: "executive_summary", name: "Executive Summary", icon: "📊", description: "Key highlights, spend status, milestones", dataSource: "AI-generated or manual", required: true },
-  { index: 4, type: "initiatives_goals", name: "Initiatives & Goals", icon: "🎯", description: "Initiative tracking table with status", dataSource: "Planning doc or manual", required: true },
-  { index: 5, type: "initiative_deep_dive", name: "Initiative Deep Dive", icon: "🔍", description: "Detailed view of a key initiative", dataSource: "Planning doc or manual", required: false },
-  { index: 6, type: "launch_schedule", name: "Launch Schedule", icon: "🚀", description: "Quarterly launch timeline", dataSource: "Horizon Content Calendar", required: true },
-  { index: 7, type: "key_dates", name: "Key Dates & Milestones", icon: "📅", description: "Important upcoming dates", dataSource: "Manual or planning doc", required: false },
-  { index: 8, type: "budget_update", name: "Budget Update", icon: "💰", description: "Budget chart (linked to spreadsheet)", dataSource: "SF Main Expense Data", required: true },
-  { index: 9, type: "budget_reforecast", name: "Budget Reforecast", icon: "📈", description: "Reforecast comparison", dataSource: "Manual or expense data", required: false },
-  { index: 10, type: "te", name: "T&E", icon: "✈️", description: "Travel & Entertainment spend", dataSource: "Expense data", required: false },
-  { index: 11, type: "appendix_header", name: "Appendix", icon: "📎", description: "Appendix section divider", dataSource: "Static", required: false },
-  { index: 12, type: "budget_detail", name: "Budget Detail Table", icon: "📊", description: "Detailed budget by team/project", dataSource: "SF Main Expense Data", required: false },
-  { index: 13, type: "appendix_content", name: "Appendix Content", icon: "📝", description: "Additional reference material", dataSource: "Manual entry", required: false },
-  { index: 14, type: "end_frame", name: "End Frame", icon: "🏁", description: "Closing slide", dataSource: "Static", required: false },
+  { index: 0, type: "title", name: "Title Slide", icon: "📄", description: "[PILLAR NAME] 2026 Roadmap MBR — [Month] 2026", dataSource: "Auto-populated from config", required: true, dri: "" },
+  { index: 1, type: "agenda", name: "Agenda", icon: "📋", description: "Meeting agenda overview", dataSource: "Static template", required: false, dri: "" },
+  { index: 2, type: "exclusions", name: "This Template Will Not Include", icon: "🚫", description: "DS Trend Lines / Deep Dives, etc.", dataSource: "Static template", required: false, dri: "" },
+  { index: 3, type: "executive_summary", name: "Executive Summary", icon: "📊", description: "Key highlights, spend status, milestones", dataSource: "S&O Leads (via Google Doc)", required: true, dri: "S&O Leads" },
+  { index: 4, type: "initiatives_goals", name: "Initiatives & Goals", icon: "🎯", description: "6×7 table: Initiative, Business Outcome, Release Slate, Performance Measurement", dataSource: "S&O Leads + Tiffany & Ryan", required: true, dri: "Tiffany & Ryan" },
+  { index: 5, type: "initiative_deep_dive", name: "Initiative Deep Dive", icon: "🔍", description: "Business Outcome & Goal, Progress Updates, Blockers & Risks, Leadership Asks", dataSource: "S&O Leads (via Google Doc)", required: false, dri: "S&O Leads" },
+  { index: 6, type: "launch_schedule", name: "Launch Schedule", icon: "🚀", description: "5×3 table: Q1 '26, Q2 '26, H2 '26 with [DATE]: entries", dataSource: "S&O Leads", required: true, dri: "S&O Leads" },
+  { index: 7, type: "key_dates", name: "Key Dates & Milestones", icon: "📅", description: "5×3 table: Q1 '26, Q2 '26, H2 '26 with [DATE]: entries", dataSource: "S&O Leads", required: false, dri: "S&O Leads" },
+  { index: 8, type: "budget_update", name: "Budget Update", icon: "💰", description: "Linked Sheets chart from budget spreadsheet", dataSource: "Linked Google Sheets chart", required: true, dri: "Tiffany & Ryan" },
+  { index: 9, type: "budget_reforecast", name: "Budget Update — Reforecast", icon: "📈", description: "Reforecast comparison vs. original budget", dataSource: "Tiffany & Ryan", required: false, dri: "Tiffany & Ryan" },
+  { index: 10, type: "te", name: "T&E", icon: "✈️", description: "Travel & Entertainment spend overview", dataSource: "Expense data", required: false, dri: "" },
+  { index: 11, type: "appendix_header", name: "Appendix", icon: "📎", description: "Appendix section divider", dataSource: "Static", required: false, dri: "" },
+  { index: 12, type: "budget_detail", name: "Budget Detail Table", icon: "📊", description: "7×16 table: Team, Initiative/Project, QTD Actuals, Forecast, Delta, Quarterly breakdown", dataSource: "SF Main Expense Data", required: false, dri: "" },
+  { index: 13, type: "appendix_content", name: "Appendix Content", icon: "📝", description: "Additional reference material as required", dataSource: "Manual entry", required: false, dri: "" },
+  { index: 14, type: "end_frame", name: "End Frame", icon: "🏁", description: "Closing slide", dataSource: "Static", required: false, dri: "" },
 ] as const;
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
@@ -130,76 +133,213 @@ function SlidePreviewCard({
     switch (slide.type) {
       case "title":
         return (
-          <div className="flex flex-col items-center justify-center h-full text-center gap-1">
-            <p className="text-sm font-bold text-foreground">{pillar || "[PILLAR]"} {year} Roadmap MBR</p>
-            <p className="text-xs text-muted-foreground">{monthName} {year}</p>
+          <div className="flex flex-col items-center justify-center h-full text-center gap-1 bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/30 dark:to-background rounded">
+            <p className="text-sm font-bold text-foreground">{pillar || "[PILLAR NAME]"}</p>
+            <p className="text-xs text-foreground">{year} Roadmap MBR</p>
+            <p className="text-[10px] text-muted-foreground mt-1">{monthName} {year}</p>
+          </div>
+        );
+      case "agenda":
+        return (
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-foreground">AGENDA</p>
+            <div className="space-y-0.5 text-[9px] text-muted-foreground">
+              <p>• Executive Summary</p>
+              <p>• Initiatives & Goals</p>
+              <p>• Launch Schedule</p>
+              <p>• Budget Update</p>
+              <p>• Appendix</p>
+            </div>
+          </div>
+        );
+      case "exclusions":
+        return (
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-foreground">THIS TEMPLATE WILL NOT INCLUDE</p>
+            <div className="space-y-0.5 text-[9px] text-muted-foreground">
+              <p>• DS Trend Lines / Deep Dives</p>
+              <p>• [...]</p>
+            </div>
           </div>
         );
       case "executive_summary":
         return (
           <div className="space-y-1">
-            <p className="text-[10px] font-semibold uppercase text-muted-foreground">Executive Summary</p>
-            <p className="text-xs text-foreground">{executiveSummary ? executiveSummary.substring(0, 200) + "..." : "AI-generated summary from data sources."}</p>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-foreground">EXECUTIVE SUMMARY</p>
+            <p className="text-xs text-foreground">{executiveSummary ? executiveSummary.substring(0, 150) + "..." : "[Content from S&O Leads via Google Doc]"}</p>
+            <p className="text-[8px] text-muted-foreground mt-1">DRI: S&O Leads (via Google Doc)</p>
           </div>
         );
       case "initiatives_goals":
         return (
           <div className="space-y-1">
-            <p className="text-[10px] font-semibold uppercase text-muted-foreground">Initiatives & Goals</p>
-            <div className="border rounded text-[9px]">
-              <div className="grid grid-cols-4 gap-px bg-muted">
-                {["Initiative", "Outcome", "Release", "Status"].map((h) => (
-                  <div key={h} className="bg-primary/10 p-1 font-medium text-foreground">{h}</div>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-foreground">INITIATIVES & GOALS</p>
+            <div className="border rounded text-[8px] overflow-hidden">
+              <div className="grid grid-cols-6 gap-px">
+                {["", "", "Release Slate", "", "Performance", ""].map((h, i) => (
+                  <div key={i} className="bg-blue-100 dark:bg-blue-900/30 px-1 py-0.5 font-medium text-foreground text-center">{h}</div>
                 ))}
               </div>
+              <div className="grid grid-cols-6 gap-px">
+                {["Initiative", "Business Outcome", "Target", "Progress", "KPI Target", "Value"].map((h) => (
+                  <div key={h} className="bg-muted/50 px-1 py-0.5 font-medium text-foreground text-center">{h}</div>
+                ))}
+              </div>
+              {["a.", "b.", "c.", "d."].map((row) => (
+                <div key={row} className="grid grid-cols-6 gap-px">
+                  <div className="px-1 py-0.5 text-muted-foreground">{row}</div>
+                  {[1,2,3,4,5].map((c) => <div key={c} className="px-1 py-0.5 text-muted-foreground/30">—</div>)}
+                </div>
+              ))}
             </div>
+            <p className="text-[8px] text-muted-foreground">DRI: Tiffany & Ryan</p>
+          </div>
+        );
+      case "initiative_deep_dive":
+        return (
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-foreground">[PROJECT / INITIATIVE #1]</p>
+            <div className="grid grid-cols-2 gap-1 text-[8px]">
+              <div className="border rounded p-1">
+                <p className="font-medium text-foreground">Business Outcome & Goal</p>
+                <p className="text-muted-foreground">[...]</p>
+              </div>
+              <div className="border rounded p-1">
+                <p className="font-medium text-foreground">Progress Updates</p>
+                <p className="text-muted-foreground">[...]</p>
+              </div>
+              <div className="border rounded p-1">
+                <p className="font-medium text-foreground">Blockers & Risks</p>
+                <p className="text-muted-foreground">[...]</p>
+              </div>
+              <div className="border rounded p-1">
+                <p className="font-medium text-foreground">Leadership Asks</p>
+                <p className="text-muted-foreground">[...]</p>
+              </div>
+            </div>
+            <p className="text-[8px] text-muted-foreground">DRI: S&O Leads (via Google Doc)</p>
           </div>
         );
       case "launch_schedule":
         return (
           <div className="space-y-1">
-            <p className="text-[10px] font-semibold uppercase text-muted-foreground">Launch Schedule</p>
-            <div className="grid grid-cols-3 gap-1 text-[9px]">
-              {["Q1", "Q2", "H2"].map((q) => (
-                <div key={q} className="bg-primary/10 p-1 rounded font-medium text-center text-foreground">{q} '{yearShort}</div>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-foreground">LAUNCH SCHEDULE</p>
+            <div className="border rounded text-[8px] overflow-hidden">
+              <div className="grid grid-cols-3 gap-px">
+                {[`Q1 '${yearShort}`, `Q2 '${yearShort}`, `H2 '${yearShort}`].map((q) => (
+                  <div key={q} className="bg-blue-100 dark:bg-blue-900/30 px-1 py-0.5 font-medium text-center text-foreground">{q}</div>
+                ))}
+              </div>
+              {[0,1,2,3].map((r) => (
+                <div key={r} className="grid grid-cols-3 gap-px">
+                  {[0,1,2].map((c) => (
+                    <div key={c} className="px-1 py-0.5 text-muted-foreground">[DATE]:</div>
+                  ))}
+                </div>
               ))}
             </div>
-            <p className="text-[9px] text-muted-foreground">From Horizon Content Calendar</p>
+            <p className="text-[8px] text-muted-foreground">DRI: S&O Leads</p>
+          </div>
+        );
+      case "key_dates":
+        return (
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-foreground">KEY DATES & MILESTONES</p>
+            <div className="border rounded text-[8px] overflow-hidden">
+              <div className="grid grid-cols-3 gap-px">
+                {[`Q1 '${yearShort}`, `Q2 '${yearShort}`, `H2 '${yearShort}`].map((q) => (
+                  <div key={q} className="bg-blue-100 dark:bg-blue-900/30 px-1 py-0.5 font-medium text-center text-foreground">{q}</div>
+                ))}
+              </div>
+              {[0,1,2,3].map((r) => (
+                <div key={r} className="grid grid-cols-3 gap-px">
+                  {[0,1,2].map((c) => (
+                    <div key={c} className="px-1 py-0.5 text-muted-foreground">[DATE]:</div>
+                  ))}
+                </div>
+              ))}
+            </div>
+            <p className="text-[8px] text-muted-foreground">DRI: S&O Leads</p>
           </div>
         );
       case "budget_update":
         return (
           <div className="space-y-1">
-            <p className="text-[10px] font-semibold uppercase text-muted-foreground">Budget Update</p>
-            <div className="flex items-end gap-1 h-12">
-              {[40, 65, 55, 80, 70, 90].map((h, i) => (
-                <div key={i} className="flex-1 bg-primary/30 rounded-t" style={{ height: `${h}%` }} />
+            <p className="text-[10px] font-bold uppercase tracking-wide text-foreground">BUDGET UPDATE</p>
+            <div className="flex items-end gap-0.5 h-12 px-1">
+              {[35, 55, 45, 70, 60, 80, 50, 75].map((h, i) => (
+                <div key={i} className="flex-1 rounded-t" style={{ height: `${h}%`, background: i % 2 === 0 ? 'oklch(0.65 0.15 250)' : 'oklch(0.75 0.12 250 / 0.5)' }} />
               ))}
             </div>
-            <p className="text-[9px] text-muted-foreground">Chart linked to expense spreadsheet</p>
+            <p className="text-[8px] text-muted-foreground">Linked Google Sheets chart • DRI: Tiffany & Ryan</p>
+          </div>
+        );
+      case "budget_reforecast":
+        return (
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-foreground">BUDGET UPDATE — REFORECAST</p>
+            <p className="text-[9px] text-muted-foreground">Reforecast comparison vs. original budget</p>
+            <p className="text-[8px] text-muted-foreground">DRI: Tiffany & Ryan</p>
+          </div>
+        );
+      case "te":
+        return (
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-foreground">T&E</p>
+            <p className="text-[9px] text-muted-foreground">Travel & Entertainment spend overview</p>
+          </div>
+        );
+      case "appendix_header":
+        return (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-sm font-bold uppercase tracking-widest text-foreground">APPENDIX</p>
           </div>
         );
       case "budget_detail":
         return (
           <div className="space-y-1">
-            <p className="text-[10px] font-semibold uppercase text-muted-foreground">Budget Detail</p>
-            {projectData ? (
-              <div className="text-[9px] space-y-0.5">
-                <p className="text-foreground">Total Funding: ${projectData.summary?.totalFunding?.toLocaleString() || "—"}</p>
-                <p className="text-foreground">Recognized: ${projectData.summary?.totalRecognized?.toLocaleString() || "—"}</p>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-foreground">BUDGET UPDATE</p>
+            <div className="border rounded text-[7px] overflow-hidden">
+              <div className="grid grid-cols-5 gap-px">
+                {["Team", "Initiative", "QTD Actuals", "Forecast", "Delta"].map((h) => (
+                  <div key={h} className="bg-blue-100 dark:bg-blue-900/30 px-0.5 py-0.5 font-medium text-foreground text-center truncate">{h}</div>
+                ))}
               </div>
+              {[0,1,2].map((r) => (
+                <div key={r} className="grid grid-cols-5 gap-px">
+                  {[0,1,2,3,4].map((c) => (
+                    <div key={c} className="px-0.5 py-0.5 text-muted-foreground/30 text-center">—</div>
+                  ))}
+                </div>
+              ))}
+            </div>
+            {projectData ? (
+              <p className="text-[8px] text-foreground">Total Funding: ${projectData.summary?.totalFunding?.toLocaleString() || "—"}</p>
             ) : (
-              <p className="text-[9px] text-muted-foreground">Auto-populated from expense data</p>
+              <p className="text-[8px] text-muted-foreground">Full Year Forecast + Quarterly breakdown</p>
             )}
           </div>
         );
-      default:
+      case "appendix_content":
         return (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-xs text-muted-foreground">{slide.description}</p>
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-foreground">&lt;Appendix as required&gt;</p>
+            <p className="text-[9px] text-muted-foreground">Additional reference material</p>
+          </div>
+        );
+      case "end_frame":
+        return (
+          <div className="flex items-center justify-center h-full bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/30 dark:to-background rounded">
+            <p className="text-xs text-muted-foreground">End</p>
           </div>
         );
     }
+    // Fallback for any unhandled type
+    return (
+      <div className="flex items-center justify-center h-full">
+        <p className="text-xs text-muted-foreground">{(slide as any).description}</p>
+      </div>
+    );
   };
 
   return (
@@ -230,6 +370,8 @@ export default function Generate() {
   const [selectedPillar, setSelectedPillar] = useState("");
   const [selectedTeam, setSelectedTeam] = useState("");
   const [selectedProject, setSelectedProject] = useState("");
+  const [manualProjectName, setManualProjectName] = useState("");
+  const [showManualProjectInput, setShowManualProjectInput] = useState(false);
   const [customTitle, setCustomTitle] = useState("");
   const [outputFolderId, setOutputFolderId] = useState("");
 
@@ -437,6 +579,7 @@ export default function Generate() {
     generateMutation.mutate({
       pillarConfigId: pillarConfig?.id || 0,
       pillarName: selectedPillar || "General",
+      projectName: selectedProject || manualProjectName.trim() || undefined,
       month: selectedMonth,
       year: parseInt(selectedYear),
       teams: selectedTeam ? [selectedTeam] : projectData?.summary?.teams || [],
@@ -459,10 +602,10 @@ export default function Generate() {
   }, [createFolderMutation]);
 
   const canProceedToSlides = useMemo(() => {
-    if (inputMode === "project") return !!selectedProject;
+    if (inputMode === "project") return !!(selectedProject || manualProjectName.trim());
     if (inputMode === "manual") return !!selectedPillar;
     return !!selectedPillar; // AI mode
-  }, [inputMode, selectedProject, selectedPillar]);
+  }, [inputMode, selectedProject, manualProjectName, selectedPillar]);
 
   // ─── Step: Generating ───────────────────────────────────────────
 
@@ -958,26 +1101,71 @@ export default function Generate() {
                       <Loader2 className="h-4 w-4 animate-spin" />
                       <span className="text-sm text-muted-foreground">Loading projects from expense data...</span>
                     </div>
-                  ) : projectNames && projectNames.length > 0 ? (
-                    <Select value={selectedProject} onValueChange={setSelectedProject}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a project..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <ScrollArea className="h-60">
-                          {projectNames.map((name) => (
-                            <SelectItem key={name} value={name}>{name}</SelectItem>
-                          ))}
-                        </ScrollArea>
-                      </SelectContent>
-                    </Select>
+                  ) : projectNames && projectNames.length > 0 && !showManualProjectInput ? (
+                    <div className="space-y-2">
+                      <Select value={selectedProject} onValueChange={setSelectedProject}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a project..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <ScrollArea className="h-60">
+                            {projectNames.map((name) => (
+                              <SelectItem key={name} value={name}>{name}</SelectItem>
+                            ))}
+                          </ScrollArea>
+                        </SelectContent>
+                      </Select>
+                      <button
+                        className="text-xs text-muted-foreground hover:text-foreground underline"
+                        onClick={() => { setShowManualProjectInput(true); setSelectedProject(""); }}
+                      >
+                        Or enter a project name manually
+                      </button>
+                    </div>
                   ) : (
-                    <div className="p-3 border rounded-md bg-muted/30">
-                      <p className="text-sm text-muted-foreground">
-                        {selectedPillar
-                          ? `No projects found for ${selectedPillar}${selectedTeam ? ` / ${selectedTeam}` : ""}. Try adjusting filters.`
-                          : "Select a pillar above to filter projects, or leave blank to see all."}
-                      </p>
+                    <div className="space-y-3">
+                      {!showManualProjectInput ? (
+                        <div className="p-4 border rounded-md bg-muted/30 space-y-3">
+                          <p className="text-sm text-muted-foreground">
+                            {selectedPillar
+                              ? `No projects found for ${selectedPillar}${selectedTeam ? ` / ${selectedTeam}` : ""}. The data source may be temporarily unavailable.`
+                              : "Select a pillar above to filter projects."}
+                          </p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setShowManualProjectInput(true)}
+                            className="gap-1.5"
+                          >
+                            <PenLine className="h-3.5 w-3.5" />
+                            Enter project name manually
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Input
+                              placeholder="Type project name..."
+                              value={manualProjectName}
+                              onChange={(e) => setManualProjectName(e.target.value)}
+                              className="flex-1"
+                            />
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setShowManualProjectInput(false);
+                                setManualProjectName("");
+                              }}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Enter a project name to proceed. Budget data will not be auto-populated.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1107,7 +1295,25 @@ export default function Generate() {
                   ) : (
                     manualLaunchItems.map((item, i) => (
                       <div key={i} className="flex items-center gap-2">
-                        <Input placeholder="Date" value={item.date} onChange={(e) => { const copy = [...manualLaunchItems]; copy[i] = { ...copy[i], date: e.target.value }; setManualLaunchItems(copy); }} className="flex-1 text-xs" />
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button variant="outline" className={`flex-1 justify-start text-left text-xs font-normal ${!item.date ? 'text-muted-foreground' : ''}`}>
+                              <CalendarIcon className="h-3.5 w-3.5 mr-1.5 shrink-0" />
+                              {item.date ? new Date(item.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Pick a date'}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={item.date ? new Date(item.date + 'T00:00:00') : undefined}
+                              onSelect={(date) => {
+                                const copy = [...manualLaunchItems];
+                                copy[i] = { ...copy[i], date: date ? `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}` : '' };
+                                setManualLaunchItems(copy);
+                              }}
+                            />
+                          </PopoverContent>
+                        </Popover>
                         <Input placeholder="Title" value={item.title} onChange={(e) => { const copy = [...manualLaunchItems]; copy[i] = { ...copy[i], title: e.target.value }; setManualLaunchItems(copy); }} className="flex-[2] text-xs" />
                         <Select value={item.quarter} onValueChange={(v) => { const copy = [...manualLaunchItems]; copy[i] = { ...copy[i], quarter: v }; setManualLaunchItems(copy); }}>
                           <SelectTrigger className="w-20"><SelectValue /></SelectTrigger>
@@ -1227,10 +1433,10 @@ export default function Generate() {
         </Tabs>
 
         {/* Next step button */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between relative z-50 pb-4">
           <p className="text-xs text-muted-foreground">
-            {inputMode === "project" && !selectedProject && "Select a project to continue"}
-            {inputMode === "project" && selectedProject && "Project selected — ready to build slides"}
+            {inputMode === "project" && !selectedProject && !manualProjectName.trim() && "Select or enter a project name to continue"}
+            {inputMode === "project" && (selectedProject || manualProjectName.trim()) && "Project selected — ready to build slides"}
             {inputMode === "manual" && !selectedPillar && "Select a pillar to continue"}
             {inputMode === "manual" && selectedPillar && "Ready to build slides"}
             {inputMode === "ai" && !selectedPillar && "Select a pillar to continue"}
@@ -1271,6 +1477,8 @@ function OutputFolderSelector({
 }) {
   const [newFolderName, setNewFolderName] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [manualFolderId, setManualFolderId] = useState("");
+  const [showManualInput, setShowManualInput] = useState(false);
 
   const hasYearFolder = outputFolders.some((f) => f.name === selectedYear);
 
@@ -1346,10 +1554,10 @@ function OutputFolderSelector({
     );
   }
 
-  // No folders at all
+  // No folders at all — show manual folder ID input + create option
   return (
     <div className="space-y-2">
-      <p className="text-xs text-muted-foreground">No output folders found. Create one to save generated decks.</p>
+      <p className="text-xs text-muted-foreground">No output folders found. Create one or enter a Google Drive folder ID manually.</p>
       <Button
         variant="outline"
         size="sm"
@@ -1360,6 +1568,44 @@ function OutputFolderSelector({
         {isCreating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <FolderPlus className="h-3 w-3 mr-1" />}
         Create {selectedYear} Folder
       </Button>
+      {!showManualInput ? (
+        <button
+          className="text-xs text-muted-foreground hover:text-foreground underline w-full text-center"
+          onClick={() => setShowManualInput(true)}
+        >
+          Or enter a folder ID manually
+        </button>
+      ) : (
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <Input
+              placeholder="Google Drive folder ID..."
+              value={manualFolderId}
+              onChange={(e) => setManualFolderId(e.target.value)}
+              className="text-xs h-8 flex-1"
+            />
+            <Button
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => {
+                if (manualFolderId.trim()) {
+                  setOutputFolderId(manualFolderId.trim());
+                }
+              }}
+              disabled={!manualFolderId.trim()}
+            >
+              Use
+            </Button>
+          </div>
+          <p className="text-[10px] text-muted-foreground">Paste the folder ID from the Google Drive URL (the part after /folders/).</p>
+          {outputFolderId && (
+            <div className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
+              <Folder className="h-3 w-3" />
+              <span className="truncate">Using folder: {outputFolderId.substring(0, 20)}...</span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
