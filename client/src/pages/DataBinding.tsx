@@ -40,6 +40,8 @@ import {
   CircleDashed,
   ChevronDown,
   ChevronRight,
+  PlusCircle,
+  Loader2,
 } from "lucide-react";
 
 // ─── All template slide sections ─────────────────────────────
@@ -235,9 +237,25 @@ export default function DataBinding() {
   const [transformNotes, setTransformNotes] = useState("");
   const [selectedDataSourceId, setSelectedDataSourceId] = useState<string>("");
 
+  // Add New Pillar state
+  const [newPillarDialogOpen, setNewPillarDialogOpen] = useState(false);
+  const [newPillarName, setNewPillarName] = useState("");
+
   // Queries
   const pillarsQuery = trpc.pillars.list.useQuery();
   const pillars = pillarsQuery.data ?? [];
+  const utils = trpc.useUtils();
+
+  const createPillarMutation = trpc.pillars.upsert.useMutation({
+    onSuccess: (created: any) => {
+      utils.pillars.list.invalidate();
+      setNewPillarDialogOpen(false);
+      setNewPillarName("");
+      toast.success(`Pillar "${newPillarName}" created.`);
+      if (created?.id) setSelectedPillarId(String(created.id));
+    },
+    onError: (err: any) => toast.error(err.message),
+  });
 
   const numericPillarId = selectedPillarId !== "all" ? parseInt(selectedPillarId) : undefined;
 
@@ -251,7 +269,6 @@ export default function DataBinding() {
   const dataSources = dataSourcesQuery.data ?? [];
 
   // Mutations
-  const utils = trpc.useUtils();
   const upsertBinding = trpc.fieldBindings.upsert.useMutation({
     onSuccess: () => {
       toast.success("Binding saved.");
@@ -473,14 +490,19 @@ export default function DataBinding() {
 
         {/* Pillar Tabs */}
         <Tabs value={selectedPillarId} onValueChange={setSelectedPillarId}>
-          <TabsList>
-            <TabsTrigger value="all">All Pillars</TabsTrigger>
-            {pillars.map((p) => (
-              <TabsTrigger key={p.id} value={p.id.toString()}>
-                {p.pillarName.length > 22 ? p.pillarName.slice(0, 20) + "\u2026" : p.pillarName}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+          <div className="flex items-center gap-2">
+            <TabsList>
+              <TabsTrigger value="all">All Pillars</TabsTrigger>
+              {pillars.map((p) => (
+                <TabsTrigger key={p.id} value={p.id.toString()}>
+                  {p.pillarName.length > 22 ? p.pillarName.slice(0, 20) + "\u2026" : p.pillarName}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            <Button variant="outline" size="sm" className="gap-1 text-xs" onClick={() => setNewPillarDialogOpen(true)}>
+              <PlusCircle className="h-3.5 w-3.5" /> Add Pillar
+            </Button>
+          </div>
 
           <TabsContent value={selectedPillarId} className="mt-4">
             {selectedPillarId === "all" && pillars.length === 0 ? (
@@ -763,6 +785,26 @@ export default function DataBinding() {
               disabled={upsertBinding.isPending || !sourceField.trim()}
             >
               {upsertBinding.isPending ? "Saving..." : editingExistingBinding ? "Save Changes" : "Connect"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* ─── Add New Pillar Dialog ──────────────────────────── */}
+      <Dialog open={newPillarDialogOpen} onOpenChange={setNewPillarDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Add New Pillar</DialogTitle>
+            <DialogDescription>Create a new pillar to organize your data bindings.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label>Pillar Name</Label>
+            <Input placeholder="e.g., Horizon" value={newPillarName} onChange={(e) => setNewPillarName(e.target.value)} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewPillarDialogOpen(false)}>Cancel</Button>
+            <Button onClick={() => { if (!newPillarName.trim()) { toast.error("Pillar name is required."); return; } createPillarMutation.mutate({ pillarName: newPillarName.trim() }); }} disabled={createPillarMutation.isPending}>
+              {createPillarMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
+              Create Pillar
             </Button>
           </DialogFooter>
         </DialogContent>

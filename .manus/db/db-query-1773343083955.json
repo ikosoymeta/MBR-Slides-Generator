@@ -1,0 +1,9 @@
+{
+  "query": "UPDATE pillar_configs SET pillarName = 'BOSS', teams = '[]' WHERE id = 1; INSERT INTO pillar_configs (pillarName, teams, isActive) VALUES ('Executive', '[]', true), ('Games', '[]', true), ('Entertainment', '[]', true), ('Studios', '[]', true), ('Horizon', '[]', true);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4RxuTuBHhP2JPpU.9a12a4c771bb --database MsAJWo4JkN3ndL6jvfmLkL --execute UPDATE pillar_configs SET pillarName = 'BOSS', teams = '[]' WHERE id = 1; INSERT INTO pillar_configs (pillarName, teams, isActive) VALUES ('Executive', '[]', true), ('Games', '[]', true), ('Entertainment', '[]', true), ('Studios', '[]', true), ('Horizon', '[]', true);",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 76
+}

@@ -40,7 +40,7 @@ export const appRouter = router({
         sheetTab: z.string().optional(),
         description: z.string().optional(),
         category: z.enum(["planning_doc", "content_calendar", "budget_tracker", "expense_data", "template", "other"]),
-        pillarConfigId: z.number().optional(),
+        pillarConfigId: z.number(),
       }))
       .mutation(({ ctx, input }) =>
         db.createDataSource({ ...input, userId: ctx.user.id })

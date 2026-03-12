@@ -1,0 +1,15 @@
+{
+  "query": "SELECT id, pillarName, teams FROM pillar_configs;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 4RxuTuBHhP2JPpU.9a12a4c771bb --database MsAJWo4JkN3ndL6jvfmLkL --execute SELECT id, pillarName, teams FROM pillar_configs;",
+  "rows": [
+    {
+      "id": "1",
+      "pillarName": "Business Operations and Strategy",
+      "teams": "[\"Consumer Insights\", \"Content Operations\", \"Growth and Monetization\", \"MH+\", \"Studios Strategy\", \"Tools\", \"UXR & CWs\"]"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tpillarName\tteams\n1\tBusiness Operations and Strategy\t[\"Consumer Insights\", \"Content Operations\", \"Growth and Monetization\", \"MH+\", \"Studios Strategy\", \"Tools\", \"UXR & CWs\"]\n",
+  "stderr": "",
+  "execution_time_ms": 168
+}

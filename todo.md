@@ -141,3 +141,9 @@
 - [x] REDESIGN: Output organized in folders named "MBR Slide Deck March 12th, 2026" (full date with ordinal)
 - [x] REDESIGN: Update Autopilot UI for single schedule model
 - [x] REDESIGN: Update DashboardLayout status indicator for single schedule
+- [x] AUDIT: Verify Data Sources are pillar-specific in schema and UI (now required)
+- [x] AUDIT: Verify Data Binding is pillar-specific in schema and UI (already was)
+- [x] Replace existing pillar with new set: Executive, Games, Entertainment, Studios, Horizon, BOSS
+- [x] Make pillar selection required when creating/editing Data Sources
+- [x] Add inline "Add New Pillar" option in Data Sources and Data Binding pillar dropdowns
+- [x] Remove "Unassigned" sources concept since pillar is now required

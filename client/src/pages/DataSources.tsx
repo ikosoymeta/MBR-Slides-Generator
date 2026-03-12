@@ -45,6 +45,7 @@ import {
   ArrowRight,
   Settings2,
   Pencil,
+  PlusCircle,
 } from "lucide-react";
 
 // ─── Constants ──────────────────────────────────────────────────
@@ -232,17 +233,19 @@ export default function DataSources() {
 
   function handleAddSource() {
     const fileId = extractFileId(googleUrl);
+    if (!addToPillarId) { toast.error("Please select a pillar."); return; }
     if (!name.trim() || !fileId) { toast.error("Name and Google URL/ID are required."); return; }
     createSourceMutation.mutate({
       name: name.trim(), sourceType: sourceType as any, googleFileId: fileId,
       sheetTab: sheetTab || undefined, description: description || undefined,
-      category: category as any, pillarConfigId: addToPillarId ? Number(addToPillarId) : undefined,
+      category: category as any, pillarConfigId: Number(addToPillarId),
     });
   }
 
   function handleEditSource() {
     if (!editingSource) return;
     const fileId = extractFileId(editGoogleUrl);
+    if (!editPillarId) { toast.error("Please select a pillar."); return; }
     if (!editName.trim() || !fileId) { toast.error("Name and Google URL/ID are required."); return; }
     updateSourceMutation.mutate({
       id: editingSource.id,
@@ -252,7 +255,7 @@ export default function DataSources() {
       sheetTab: editSheetTab || undefined,
       description: editDescription || undefined,
       category: editCategory as any,
-      pillarConfigId: editPillarId ? Number(editPillarId) : null,
+      pillarConfigId: Number(editPillarId),
     });
   }
 
@@ -314,6 +317,24 @@ export default function DataSources() {
   }, [allSources]);
 
   // ─── Source Form (shared between Add and Edit) ─────────────
+  // ─── Add New Pillar state ─────────────────────────────────
+  const [newPillarDialogOpen, setNewPillarDialogOpen] = useState(false);
+  const [newPillarName, setNewPillarName] = useState("");
+  const createPillarMutation = trpc.pillars.upsert.useMutation({
+    onSuccess: (created: any) => {
+      utils.pillars.list.invalidate();
+      setNewPillarDialogOpen(false);
+      setNewPillarName("");
+      toast.success(`Pillar "${newPillarName}" created.`);
+      // Auto-select the new pillar in whichever form is open
+      if (created?.id) {
+        if (addDialogOpen) setAddToPillarId(String(created.id));
+        if (editDialogOpen) setEditPillarId(String(created.id));
+      }
+    },
+    onError: (err: any) => toast.error(err.message),
+  });
+
   function SourceForm({ mode }: { mode: "add" | "edit" }) {
     const isAdd = mode === "add";
     const n = isAdd ? name : editName;
@@ -334,15 +355,20 @@ export default function DataSources() {
     return (
       <div className="space-y-4 py-2">
         <div className="space-y-2">
-          <Label>Pillar</Label>
-          <Select value={pid} onValueChange={setPid}>
-            <SelectTrigger><SelectValue placeholder="Select a pillar..." /></SelectTrigger>
-            <SelectContent>
-              {pillars?.map((p) => (
-                <SelectItem key={p.id} value={String(p.id)}>{p.pillarName}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Label>Pillar <span className="text-destructive">*</span></Label>
+          <div className="flex gap-2">
+            <Select value={pid} onValueChange={setPid}>
+              <SelectTrigger className="flex-1"><SelectValue placeholder="Select a pillar..." /></SelectTrigger>
+              <SelectContent>
+                {pillars?.map((p) => (
+                  <SelectItem key={p.id} value={String(p.id)}>{p.pillarName}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button type="button" variant="outline" size="icon" className="shrink-0" title="Add new pillar" onClick={() => setNewPillarDialogOpen(true)}>
+              <PlusCircle className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
         <div className="space-y-2">
           <Label>Name</Label>
@@ -428,11 +454,7 @@ export default function DataSources() {
                   )}
                 </TabsTrigger>
               ))}
-              {(pillarSourceCounts.unassigned || 0) > 0 && (
-                <TabsTrigger value="unassigned" className="text-xs text-muted-foreground">
-                  Unassigned <Badge variant="outline" className="ml-1.5 text-[10px] px-1.5 py-0">{pillarSourceCounts.unassigned}</Badge>
-                </TabsTrigger>
-              )}
+
             </TabsList>
 
             {/* All sources view */}
@@ -451,14 +473,7 @@ export default function DataSources() {
                       />
                     );
                   })}
-                  {(sourcesByPillar.unassigned || []).length > 0 && (
-                    <PillarSourceGroup pillarName="Unassigned Sources" pillarId={null}
-                      sources={sourcesByPillar.unassigned || []} mappings={[]} showMappings={false}
-                      onDelete={(id) => deleteSourceMutation.mutate({ id })}
-                      onEdit={openEditDialog}
-                      onOpenMapping={openMappingDialog} getGoogleUrl={getGoogleUrl}
-                    />
-                  )}
+
                 </div>
               )}
             </TabsContent>
@@ -477,20 +492,7 @@ export default function DataSources() {
               </TabsContent>
             ))}
 
-            {/* Unassigned view */}
-            <TabsContent value="unassigned" className="mt-4">
-              {(sourcesByPillar.unassigned || []).length === 0 ? <EmptyState /> : (
-                <div className="grid gap-3">
-                  {(sourcesByPillar.unassigned || []).map((src) => (
-                    <SourceCard key={src.id} source={src} mappings={[]} showMappings={false}
-                      onDelete={() => deleteSourceMutation.mutate({ id: src.id })}
-                      onEdit={() => openEditDialog(src)}
-                      onOpenMapping={() => openMappingDialog(src.id)} getGoogleUrl={getGoogleUrl}
-                    />
-                  ))}
-                </div>
-              )}
-            </TabsContent>
+
           </Tabs>
         )}
       </div>
@@ -569,6 +571,26 @@ export default function DataSources() {
             <Button onClick={handleAddMapping} disabled={createMappingMutation.isPending}>
               {createMappingMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
               Link to Slide
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* ─── Add New Pillar Dialog ─────────────────────────── */}
+      <Dialog open={newPillarDialogOpen} onOpenChange={setNewPillarDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Add New Pillar</DialogTitle>
+            <DialogDescription>Create a new pillar to organize your data sources.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label>Pillar Name</Label>
+            <Input placeholder="e.g., Horizon" value={newPillarName} onChange={(e) => setNewPillarName(e.target.value)} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewPillarDialogOpen(false)}>Cancel</Button>
+            <Button onClick={() => { if (!newPillarName.trim()) { toast.error("Pillar name is required."); return; } createPillarMutation.mutate({ pillarName: newPillarName.trim() }); }} disabled={createPillarMutation.isPending}>
+              {createPillarMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
+              Create Pillar
             </Button>
           </DialogFooter>
         </DialogContent>
