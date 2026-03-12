@@ -43,7 +43,6 @@ import {
   Database,
   ExternalLink,
   Link2,
-  Unlink,
   Layers,
   ArrowRight,
   Settings2,
@@ -56,6 +55,7 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
+  Save,
 } from "lucide-react";
 
 // ─── Constants ──────────────────────────────────────────────────
@@ -98,19 +98,6 @@ const SLIDE_TYPE_LABELS: Record<string, string> = {
   appendix_content: "Appendix Content",
   end_frame: "End Frame",
 };
-
-const MAPPABLE_SLIDE_TYPES = [
-  "executive_summary",
-  "initiatives_goals",
-  "initiative_deep_dive",
-  "launch_schedule",
-  "key_dates",
-  "budget_update",
-  "budget_reforecast",
-  "te",
-  "budget_detail",
-  "appendix_content",
-] as const;
 
 // ─── Data Binding Constants ─────────────────────────────────────
 const SLIDE_SECTIONS: Record<string, { label: string; sections: { value: string; label: string; type: string }[] }> = {
@@ -238,17 +225,22 @@ export default function DataSources() {
   const { data: pillars, isLoading: pillarsLoading } = trpc.pillars.list.useQuery();
   const { data: allSources, isLoading: sourcesLoading } = trpc.dataSources.list.useQuery();
 
-  // Top-level tab: "sources" or "bindings"
-  const [mainTab, setMainTab] = useState<string>("sources");
-  const [selectedPillarId, setSelectedPillarId] = useState<string>("all");
+  // Pillar tab selection — default to first pillar
+  const [selectedPillarId, setSelectedPillarId] = useState<string>("");
+
+  // Auto-select first pillar when loaded
+  const effectivePillarId = useMemo(() => {
+    if (selectedPillarId && pillars?.some(p => String(p.id) === selectedPillarId)) return selectedPillarId;
+    if (pillars && pillars.length > 0) return String(pillars[0].id);
+    return "";
+  }, [selectedPillarId, pillars]);
+
+  const numericPillarId = effectivePillarId ? Number(effectivePillarId) : null;
 
   // ─── Source Dialogs ───────────────────────────────────────────
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingSource, setEditingSource] = useState<any>(null);
-  const [mappingDialogOpen, setMappingDialogOpen] = useState(false);
-  const [mappingSourceId, setMappingSourceId] = useState<number | null>(null);
-  const [mappingPillarId, setMappingPillarId] = useState<number | null>(null);
 
   // Add Source form state
   const [name, setName] = useState("");
@@ -268,35 +260,20 @@ export default function DataSources() {
   const [editCategory, setEditCategory] = useState<string>("other");
   const [editPillarId, setEditPillarId] = useState<string>("");
 
-  // Mapping form state
-  const [mappingSlideType, setMappingSlideType] = useState<string>("");
-  const [mappingSection, setMappingSection] = useState("");
-  const [mappingNotes, setMappingNotes] = useState("");
+  // Expanded sources (to show bindings)
+  const [expandedSources, setExpandedSources] = useState<Set<number>>(new Set());
 
-  // ─── Binding Dialog state ─────────────────────────────────────
-  const [connectDialogOpen, setConnectDialogOpen] = useState(false);
-  const [editingSection, setEditingSection] = useState<{ slideType: string; sectionValue: string; sectionLabel: string; sectionType: string } | null>(null);
-  const [editingExistingBinding, setEditingExistingBinding] = useState<FieldBinding | null>(null);
-  const [expandedSlides, setExpandedSlides] = useState<Set<string>>(new Set(Object.keys(SLIDE_SECTIONS)));
-  const [sourceField, setSourceField] = useState("");
-  const [sourceFieldType, setSourceFieldType] = useState("string");
-  const [transformNotes, setTransformNotes] = useState("");
-  const [selectedDataSourceId, setSelectedDataSourceId] = useState<string>("");
+  // Inline binding edit state: sourceId -> editing state
+  const [editingBindings, setEditingBindings] = useState<Map<number, Map<string, { sourceField: string; sourceFieldType: string; transformNotes: string }>>>(new Map());
 
   // Add New Pillar state
   const [newPillarDialogOpen, setNewPillarDialogOpen] = useState(false);
   const [newPillarName, setNewPillarName] = useState("");
 
   // ─── Queries ──────────────────────────────────────────────────
-  const numericPillarId = selectedPillarId !== "all" ? Number(selectedPillarId) : null;
-  const { data: pillarMappings } = trpc.slideMappings.listByPillar.useQuery(
-    { pillarConfigId: numericPillarId! },
-    { enabled: numericPillarId !== null }
-  );
-
   const bindingsQuery = trpc.fieldBindings.list.useQuery(
     { pillarConfigId: numericPillarId ?? undefined },
-    { enabled: true }
+    { enabled: numericPillarId !== null }
   );
   const bindings = (bindingsQuery.data ?? []) as FieldBinding[];
 
@@ -324,25 +301,7 @@ export default function DataSources() {
   const deleteSourceMutation = trpc.dataSources.delete.useMutation({
     onSuccess: () => {
       utils.dataSources.list.invalidate();
-      if (numericPillarId) utils.slideMappings.listByPillar.invalidate({ pillarConfigId: numericPillarId });
       toast.success("Data source removed.");
-    },
-  });
-
-  const createMappingMutation = trpc.slideMappings.create.useMutation({
-    onSuccess: () => {
-      if (numericPillarId) utils.slideMappings.listByPillar.invalidate({ pillarConfigId: numericPillarId });
-      setMappingDialogOpen(false);
-      resetMappingForm();
-      toast.success("Slide mapping created.");
-    },
-    onError: (err) => toast.error(err.message),
-  });
-
-  const deleteMappingMutation = trpc.slideMappings.delete.useMutation({
-    onSuccess: () => {
-      if (numericPillarId) utils.slideMappings.listByPillar.invalidate({ pillarConfigId: numericPillarId });
-      toast.success("Mapping removed.");
     },
   });
 
@@ -364,48 +323,26 @@ export default function DataSources() {
   // Binding mutations
   const upsertBinding = trpc.fieldBindings.upsert.useMutation({
     onSuccess: () => {
-      toast.success("Binding saved.");
       utils.fieldBindings.list.invalidate();
-      setConnectDialogOpen(false);
-      setEditingSection(null);
-      setEditingExistingBinding(null);
-      resetBindingForm();
     },
     onError: (e: any) => toast.error(e.message),
   });
 
   const deleteBinding = trpc.fieldBindings.delete.useMutation({
     onSuccess: () => {
-      toast.success("Binding removed.");
       utils.fieldBindings.list.invalidate();
     },
     onError: (e: any) => toast.error(e.message),
   });
 
   // ─── Derived data ─────────────────────────────────────────────
-  const sourcesByPillar = useMemo(() => {
-    if (!allSources) return {};
-    const grouped: Record<string, typeof allSources> = {};
-    for (const src of allSources) {
-      const key = src.pillarConfigId ? String(src.pillarConfigId) : "unassigned";
-      if (!grouped[key]) grouped[key] = [];
-      grouped[key].push(src);
-    }
-    return grouped;
-  }, [allSources]);
-
-  const mappingsBySource = useMemo(() => {
-    if (!pillarMappings) return {};
-    const grouped: Record<number, typeof pillarMappings> = {};
-    for (const m of pillarMappings) {
-      if (!grouped[m.dataSourceId]) grouped[m.dataSourceId] = [];
-      grouped[m.dataSourceId].push(m);
-    }
-    return grouped;
-  }, [pillarMappings]);
+  const pillarSources = useMemo(() => {
+    if (!allSources || !numericPillarId) return [];
+    return allSources.filter(s => s.pillarConfigId === numericPillarId);
+  }, [allSources, numericPillarId]);
 
   const pillarSourceCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: allSources?.length || 0 };
+    const counts: Record<string, number> = {};
     if (!allSources) return counts;
     for (const src of allSources) {
       if (src.pillarConfigId) {
@@ -416,47 +353,50 @@ export default function DataSources() {
     return counts;
   }, [allSources]);
 
-  // Binding map
+  // Binding map: key = "slideType::sectionValue"
   const bindingMap = useMemo(() => {
     const map = new Map<string, FieldBinding>();
     for (const b of bindings) map.set(`${b.slideType}::${b.slideSection}`, b);
     return map;
   }, [bindings]);
 
-  function getBinding(slideType: string, sectionValue: string) { return bindingMap.get(`${slideType}::${sectionValue}`); }
-  function getStatus(slideType: string, sectionValue: string): "connected" | "not_required" | "unbound" {
-    const b = getBinding(slideType, sectionValue);
-    if (!b) return "unbound";
-    return (b.bindingStatus as any) ?? "connected";
-  }
+  // Bindings grouped by dataSourceId
+  const bindingsBySource = useMemo(() => {
+    const map = new Map<number, FieldBinding[]>();
+    for (const b of bindings) {
+      if (b.dataSourceId) {
+        const arr = map.get(b.dataSourceId) || [];
+        arr.push(b);
+        map.set(b.dataSourceId, arr);
+      }
+    }
+    return map;
+  }, [bindings]);
+
+  // Binding stats for the current pillar
+  const bindingStats = useMemo(() => {
+    let connected = 0, notRequired = 0, unbound = 0;
+    for (const sec of ALL_SECTIONS) {
+      const b = bindingMap.get(`${sec.slideType}::${sec.sectionValue}`);
+      if (!b) { unbound++; continue; }
+      const status = (b.bindingStatus as string) ?? "connected";
+      if (status === "connected") connected++;
+      else if (status === "not_required") notRequired++;
+      else unbound++;
+    }
+    return { connected, notRequired, unbound, total: ALL_SECTIONS.length };
+  }, [bindingMap]);
+
   function getSourceName(dsId: number | null) {
     if (!dsId) return null;
     const ds = allSources?.find((d) => d.id === dsId);
     return ds?.name ?? `Source #${dsId}`;
   }
 
-  const bindingStats = useMemo(() => {
-    let connected = 0, notRequired = 0, unbound = 0;
-    for (const sec of ALL_SECTIONS) {
-      const status = getStatus(sec.slideType, sec.sectionValue);
-      if (status === "connected") connected++;
-      else if (status === "not_required") notRequired++;
-      else unbound++;
-    }
-    return { connected, notRequired, unbound, total: ALL_SECTIONS.length };
-  }, [bindings]);
-
   // ─── Helpers ──────────────────────────────────────────────────
   function resetAddForm() {
     setName(""); setSourceType("google_sheet"); setGoogleUrl(""); setSheetTab("");
     setDescription(""); setCategory("other"); setAddToPillarId("");
-  }
-  function resetMappingForm() {
-    setMappingSlideType(""); setMappingSection(""); setMappingNotes("");
-    setMappingSourceId(null); setMappingPillarId(null);
-  }
-  function resetBindingForm() {
-    setSourceField(""); setSourceFieldType("string"); setTransformNotes(""); setSelectedDataSourceId("");
   }
 
   function extractFileId(url: string): string {
@@ -496,32 +436,10 @@ export default function DataSources() {
     setEditDialogOpen(true);
   }
 
-  function handleAddMapping() {
-    const effectivePillarId = mappingPillarId || numericPillarId;
-    if (!mappingSourceId || !mappingSlideType || !effectivePillarId) {
-      toast.error("Source and slide component are required."); return;
-    }
-    createMappingMutation.mutate({
-      dataSourceId: mappingSourceId, pillarConfigId: effectivePillarId,
-      sourceSection: mappingSection || undefined, slideType: mappingSlideType as any,
-      mappingNotes: mappingNotes || undefined,
-    });
-  }
-
   function openAddDialog() {
     resetAddForm();
     if (numericPillarId) setAddToPillarId(String(numericPillarId));
     setAddDialogOpen(true);
-  }
-
-  function openMappingDialog(sourceId: number, pillarId?: number | null) {
-    resetMappingForm(); setMappingSourceId(sourceId);
-    if (pillarId) setMappingPillarId(pillarId);
-    else {
-      const src = allSources?.find((s) => s.id === sourceId);
-      if (src?.pillarConfigId) setMappingPillarId(src.pillarConfigId);
-    }
-    setMappingDialogOpen(true);
   }
 
   function getGoogleUrl(src: { sourceType: string; googleFileId: string }) {
@@ -530,87 +448,127 @@ export default function DataSources() {
     return `https://docs.google.com/presentation/d/${src.googleFileId}`;
   }
 
-  // Binding helpers
-  function openConnect(slideType: string, sectionValue: string, sectionLabel: string, sectionType: string) {
-    const existing = getBinding(slideType, sectionValue);
-    setEditingSection({ slideType, sectionValue, sectionLabel, sectionType });
-    if (existing && existing.bindingStatus !== "not_required") {
-      setEditingExistingBinding(existing);
-      setSourceField(existing.sourceField === "—" ? "" : existing.sourceField);
-      setSourceFieldType(existing.sourceFieldType);
-      setTransformNotes(existing.transformNotes ?? "");
-      setSelectedDataSourceId(existing.dataSourceId?.toString() ?? "");
-    } else {
-      setEditingExistingBinding(null);
-      resetBindingForm();
-    }
-    setConnectDialogOpen(true);
-  }
-
-  function handleSaveConnect() {
-    if (!editingSection) return;
-    const pillarId = numericPillarId ?? (pillars && pillars.length > 0 ? pillars[0].id : undefined);
-    if (!pillarId) { toast.error("Please select a pillar first."); return; }
-    if (!sourceField.trim()) { toast.error("Please enter a source field name."); return; }
-    upsertBinding.mutate({
-      pillarConfigId: pillarId, slideType: editingSection.slideType as any,
-      slideSection: editingSection.sectionValue, bindingStatus: "connected",
-      sourceField: sourceField.trim(), sourceFieldType: sourceFieldType as any,
-      slideSectionType: editingSection.sectionType as any,
-      dataSourceId: selectedDataSourceId && selectedDataSourceId !== "none" ? parseInt(selectedDataSourceId) : null,
-      transformNotes: transformNotes || undefined,
-    });
-  }
-
-  function markNotRequired(slideType: string, sectionValue: string) {
-    const pillarId = numericPillarId ?? (pillars && pillars.length > 0 ? pillars[0].id : undefined);
-    if (!pillarId) { toast.error("Please select a pillar first."); return; }
-    upsertBinding.mutate({
-      pillarConfigId: pillarId, slideType: slideType as any,
-      slideSection: sectionValue, bindingStatus: "not_required",
-      sourceField: "—", slideSectionType: "string" as any,
-    });
-  }
-
-  function clearBinding(slideType: string, sectionValue: string) {
-    const existing = getBinding(slideType, sectionValue);
-    if (existing) deleteBinding.mutate({ id: existing.id });
-  }
-
-  function toggleSlide(slideType: string) {
-    setExpandedSlides((prev) => {
+  // ─── Source expand/collapse ──────────────────────────────────
+  function toggleSource(sourceId: number) {
+    setExpandedSources(prev => {
       const next = new Set(prev);
-      if (next.has(slideType)) next.delete(slideType); else next.add(slideType);
+      if (next.has(sourceId)) {
+        next.delete(sourceId);
+        // Clear any editing state for this source
+        setEditingBindings(prev => {
+          const next = new Map(prev);
+          next.delete(sourceId);
+          return next;
+        });
+      } else {
+        next.add(sourceId);
+      }
       return next;
     });
   }
 
-  function slideStats(slideType: string) {
-    const sections = SLIDE_SECTIONS[slideType]?.sections ?? [];
-    let connected = 0, notRequired = 0, unbound = 0;
-    for (const sec of sections) {
-      const status = getStatus(slideType, sec.value);
-      if (status === "connected") connected++;
-      else if (status === "not_required") notRequired++;
-      else unbound++;
+  // ─── Inline binding edit helpers ─────────────────────────────
+  function startEditBinding(sourceId: number, slideType: string, sectionValue: string, existing?: FieldBinding) {
+    setEditingBindings(prev => {
+      const next = new Map(prev);
+      const sourceEdits = new Map(next.get(sourceId) || new Map());
+      const key = `${slideType}::${sectionValue}`;
+      sourceEdits.set(key, {
+        sourceField: existing?.sourceField && existing.sourceField !== "—" ? existing.sourceField : "",
+        sourceFieldType: existing?.sourceFieldType || "string",
+        transformNotes: existing?.transformNotes || "",
+      });
+      next.set(sourceId, sourceEdits);
+      return next;
+    });
+  }
+
+  function cancelEditBinding(sourceId: number, slideType: string, sectionValue: string) {
+    setEditingBindings(prev => {
+      const next = new Map(prev);
+      const sourceEdits = new Map(next.get(sourceId) || new Map());
+      sourceEdits.delete(`${slideType}::${sectionValue}`);
+      if (sourceEdits.size === 0) next.delete(sourceId);
+      else next.set(sourceId, sourceEdits);
+      return next;
+    });
+  }
+
+  function updateEditBinding(sourceId: number, slideType: string, sectionValue: string, field: string, value: string) {
+    setEditingBindings(prev => {
+      const next = new Map(prev);
+      const sourceEdits = new Map(next.get(sourceId) || new Map());
+      const key = `${slideType}::${sectionValue}`;
+      const current = sourceEdits.get(key);
+      if (current) {
+        sourceEdits.set(key, { ...current, [field]: value });
+        next.set(sourceId, sourceEdits);
+      }
+      return next;
+    });
+  }
+
+  function getEditState(sourceId: number, slideType: string, sectionValue: string) {
+    return editingBindings.get(sourceId)?.get(`${slideType}::${sectionValue}`);
+  }
+
+  function saveBinding(sourceId: number, slideType: string, sectionValue: string, sectionType: string) {
+    const editState = getEditState(sourceId, slideType, sectionValue);
+    if (!editState) return;
+    if (!numericPillarId) { toast.error("No pillar selected."); return; }
+    if (!editState.sourceField.trim()) { toast.error("Source field name is required."); return; }
+    upsertBinding.mutate({
+      pillarConfigId: numericPillarId,
+      slideType: slideType as any,
+      slideSection: sectionValue,
+      bindingStatus: "connected",
+      sourceField: editState.sourceField.trim(),
+      sourceFieldType: editState.sourceFieldType as any,
+      slideSectionType: sectionType as any,
+      dataSourceId: sourceId,
+      transformNotes: editState.transformNotes || undefined,
+    }, {
+      onSuccess: () => {
+        toast.success("Binding saved.");
+        cancelEditBinding(sourceId, slideType, sectionValue);
+      },
+    });
+  }
+
+  function markNotRequired(slideType: string, sectionValue: string, sourceId: number) {
+    if (!numericPillarId) { toast.error("No pillar selected."); return; }
+    upsertBinding.mutate({
+      pillarConfigId: numericPillarId,
+      slideType: slideType as any,
+      slideSection: sectionValue,
+      bindingStatus: "not_required",
+      sourceField: "—",
+      slideSectionType: "string" as any,
+      dataSourceId: sourceId,
+    }, {
+      onSuccess: () => toast.success("Marked as not required."),
+    });
+  }
+
+  function clearBinding(slideType: string, sectionValue: string) {
+    const existing = bindingMap.get(`${slideType}::${sectionValue}`);
+    if (existing) {
+      deleteBinding.mutate({ id: existing.id }, {
+        onSuccess: () => toast.success("Binding cleared."),
+      });
     }
-    return { connected, notRequired, unbound, total: sections.length };
   }
 
   const isLoading = pillarsLoading || sourcesLoading;
 
   // Inactivity timeout for edit dialogs
-  const anyDialogOpen = addDialogOpen || editDialogOpen || mappingDialogOpen || connectDialogOpen;
+  const anyDialogOpen = addDialogOpen || editDialogOpen;
   const { showWarning, remainingSeconds, continueSession } = useInactivityTimeout({
     isActive: anyDialogOpen,
     onTimeout: () => {
       setAddDialogOpen(false);
       setEditDialogOpen(false);
-      setMappingDialogOpen(false);
-      setConnectDialogOpen(false);
       setEditingSource(null);
-      setEditingSection(null);
-      setEditingExistingBinding(null);
       toast.error("Edit session closed due to inactivity.");
     },
   });
@@ -713,232 +671,304 @@ export default function DataSources() {
               Configure data sources per pillar and bind them to MBR slide template sections.
             </p>
           </div>
-          {mainTab === "sources" && (
-            <Button onClick={openAddDialog}><Plus className="h-4 w-4 mr-1.5" />Add Source</Button>
-          )}
+          <Button onClick={openAddDialog}><Plus className="h-4 w-4 mr-1.5" />Add Source</Button>
         </div>
 
-        {/* Top-level tabs: Sources / Bindings */}
-        <Tabs value={mainTab} onValueChange={setMainTab}>
-          <TabsList className="grid w-full max-w-md grid-cols-2">
-            <TabsTrigger value="sources" className="gap-1.5">
-              <Database className="h-3.5 w-3.5" /> Sources
-            </TabsTrigger>
-            <TabsTrigger value="bindings" className="gap-1.5">
-              <Link2 className="h-3.5 w-3.5" /> Bindings
-            </TabsTrigger>
-          </TabsList>
+        {/* Binding coverage summary */}
+        {numericPillarId && (
+          <div className="grid grid-cols-4 gap-3">
+            <Card className="p-4">
+              <div className="text-2xl font-bold">{bindingStats.total}</div>
+              <div className="text-xs text-muted-foreground">Total Sections</div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-2xl font-bold text-emerald-600">{bindingStats.connected}</div>
+              <div className="text-xs text-muted-foreground">Connected</div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-2xl font-bold text-gray-400">{bindingStats.notRequired}</div>
+              <div className="text-xs text-muted-foreground">Not Required</div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-2xl font-bold text-amber-600">{bindingStats.unbound}</div>
+              <div className="text-xs text-muted-foreground">Unbound</div>
+            </Card>
+          </div>
+        )}
 
-          {/* ═══ SOURCES TAB ═══ */}
-          <TabsContent value="sources" className="mt-4">
-            {isLoading ? (
-              <div className="flex items-center justify-center py-16">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : (
-              <Tabs value={selectedPillarId} onValueChange={setSelectedPillarId}>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <TabsList className="flex flex-wrap h-auto gap-1 bg-muted/50 p-1">
-                    <TabsTrigger value="all" className="text-xs">
-                      All <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0">{pillarSourceCounts.all}</Badge>
-                    </TabsTrigger>
-                    {pillars?.map((p) => (
-                      <TabsTrigger key={p.id} value={String(p.id)} className="text-xs">
-                        {p.pillarName.length > 20 ? p.pillarName.slice(0, 18) + "\u2026" : p.pillarName}
-                        {(pillarSourceCounts[String(p.id)] || 0) > 0 && (
-                          <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0">{pillarSourceCounts[String(p.id)]}</Badge>
-                        )}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                  <Button variant="outline" size="sm" className="gap-1 text-xs" onClick={() => setNewPillarDialogOpen(true)}>
-                    <PlusCircle className="h-3.5 w-3.5" /> Add Pillar
-                  </Button>
-                </div>
-
-                {/* All sources view */}
-                <TabsContent value="all" className="mt-4">
-                  {!allSources || allSources.length === 0 ? <EmptySourceState /> : (
-                    <div className="space-y-6">
-                      {pillars?.map((p) => {
-                        const pSources = sourcesByPillar[String(p.id)] || [];
-                        if (pSources.length === 0) return null;
-                        return (
-                          <PillarSourceGroup key={p.id} pillarName={p.pillarName} pillarId={p.id}
-                            sources={pSources} mappings={[]} showMappings={false}
-                            onDelete={(id) => deleteSourceMutation.mutate({ id })}
-                            onEdit={openEditDialog}
-                            onOpenMapping={openMappingDialog} getGoogleUrl={getGoogleUrl}
-                          />
-                        );
-                      })}
-                    </div>
-                  )}
-                </TabsContent>
-
-                {/* Per-pillar views */}
-                {pillars?.map((p) => (
-                  <TabsContent key={p.id} value={String(p.id)} className="mt-4">
-                    <PillarDetailView pillarName={p.pillarName} pillarId={p.id}
-                      sources={sourcesByPillar[String(p.id)] || []}
-                      mappings={pillarMappings || []} mappingsBySource={mappingsBySource}
-                      onDelete={(id) => deleteSourceMutation.mutate({ id })}
-                      onEdit={openEditDialog}
-                      onDeleteMapping={(id) => deleteMappingMutation.mutate({ id })}
-                      onOpenMapping={openMappingDialog} getGoogleUrl={getGoogleUrl}
-                    />
-                  </TabsContent>
+        {/* Pillar Tabs */}
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : !pillars || pillars.length === 0 ? (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-16">
+              <Layers className="h-12 w-12 text-muted-foreground/30 mb-4" />
+              <p className="text-muted-foreground mb-2">No pillars configured yet.</p>
+              <p className="text-xs text-muted-foreground mb-4">Create a pillar first to start adding data sources.</p>
+              <Button onClick={() => setNewPillarDialogOpen(true)}><PlusCircle className="h-4 w-4 mr-1.5" />Create Pillar</Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <Tabs value={effectivePillarId} onValueChange={setSelectedPillarId}>
+            <div className="flex items-center gap-2 flex-wrap">
+              <TabsList className="flex flex-wrap h-auto gap-1 bg-muted/50 p-1">
+                {pillars.map((p) => (
+                  <TabsTrigger key={p.id} value={String(p.id)} className="text-xs">
+                    {p.pillarName.length > 20 ? p.pillarName.slice(0, 18) + "\u2026" : p.pillarName}
+                    {(pillarSourceCounts[String(p.id)] || 0) > 0 && (
+                      <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0">{pillarSourceCounts[String(p.id)]}</Badge>
+                    )}
+                  </TabsTrigger>
                 ))}
-              </Tabs>
-            )}
-          </TabsContent>
-
-          {/* ═══ BINDINGS TAB ═══ */}
-          <TabsContent value="bindings" className="mt-4">
-            {/* Coverage Summary */}
-            <div className="grid grid-cols-4 gap-3 mb-4">
-              <Card className="p-4">
-                <div className="text-2xl font-bold">{bindingStats.total}</div>
-                <div className="text-xs text-muted-foreground">Total Sections</div>
-              </Card>
-              <Card className="p-4">
-                <div className="text-2xl font-bold text-emerald-600">{bindingStats.connected}</div>
-                <div className="text-xs text-muted-foreground">Connected</div>
-              </Card>
-              <Card className="p-4">
-                <div className="text-2xl font-bold text-gray-400">{bindingStats.notRequired}</div>
-                <div className="text-xs text-muted-foreground">Not Required</div>
-              </Card>
-              <Card className="p-4">
-                <div className="text-2xl font-bold text-amber-600">{bindingStats.unbound}</div>
-                <div className="text-xs text-muted-foreground">Unbound</div>
-              </Card>
+              </TabsList>
+              <Button variant="outline" size="sm" className="gap-1 text-xs" onClick={() => setNewPillarDialogOpen(true)}>
+                <PlusCircle className="h-3.5 w-3.5" /> Add Pillar
+              </Button>
             </div>
 
-            {/* Pillar Tabs for bindings */}
-            <Tabs value={selectedPillarId} onValueChange={setSelectedPillarId}>
-              <div className="flex items-center gap-2 mb-4">
-                <TabsList>
-                  <TabsTrigger value="all">All Pillars</TabsTrigger>
-                  {pillars?.map((p) => (
-                    <TabsTrigger key={p.id} value={p.id.toString()}>
-                      {p.pillarName.length > 22 ? p.pillarName.slice(0, 20) + "\u2026" : p.pillarName}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-                <Button variant="outline" size="sm" className="gap-1 text-xs" onClick={() => setNewPillarDialogOpen(true)}>
-                  <PlusCircle className="h-3.5 w-3.5" /> Add Pillar
-                </Button>
-              </div>
-
-              <TabsContent value={selectedPillarId} className="mt-0">
-                {selectedPillarId === "all" && pillars?.length === 0 ? (
+            {pillars.map((p) => (
+              <TabsContent key={p.id} value={String(p.id)} className="mt-4">
+                {pillarSources.length === 0 ? (
                   <Card>
-                    <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-                      <Link2 className="h-12 w-12 text-muted-foreground/40 mb-4" />
-                      <h3 className="text-lg font-medium text-muted-foreground">No pillars configured</h3>
-                      <p className="text-sm text-muted-foreground/70 mt-1 max-w-md">
-                        Create a pillar first, then come back to set up data bindings.
-                      </p>
+                    <CardContent className="flex flex-col items-center justify-center py-12">
+                      <Database className="h-10 w-10 text-muted-foreground/30 mb-3" />
+                      <p className="text-sm text-muted-foreground mb-1">No sources configured for <span className="font-medium">{p.pillarName}</span>.</p>
+                      <p className="text-xs text-muted-foreground mb-4">Add data sources and expand them to configure bindings.</p>
+                      <Button variant="outline" onClick={openAddDialog}><Plus className="h-4 w-4 mr-1.5" />Add Source</Button>
                     </CardContent>
                   </Card>
                 ) : (
                   <div className="space-y-3">
-                    {Object.entries(SLIDE_SECTIONS).map(([slideType, slide]) => {
-                      const isExpanded = expandedSlides.has(slideType);
-                      const ss = slideStats(slideType);
+                    {pillarSources.map((src) => {
+                      const Icon = SOURCE_TYPE_ICONS[src.sourceType] || FileText;
+                      const isExpanded = expandedSources.has(src.id);
+                      const sourceBindings = bindingsBySource.get(src.id) || [];
+                      const sourceBindingCount = sourceBindings.filter(b => b.bindingStatus === "connected").length;
+
                       return (
-                        <Card key={slideType} className="overflow-hidden">
-                          <button
-                            className="w-full flex items-center gap-3 px-5 py-3.5 text-left hover:bg-muted/30 transition-colors"
-                            onClick={() => toggleSlide(slideType)}
-                          >
-                            {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
-                            <Presentation className="h-4 w-4 text-primary shrink-0" />
-                            <span className="font-semibold text-sm">{slide.label}</span>
-                            <span className="text-xs text-muted-foreground ml-1">({slide.sections.length} {slide.sections.length === 1 ? "section" : "sections"})</span>
-                            <div className="ml-auto flex items-center gap-2">
-                              {ss.connected > 0 && <span className="text-xs text-emerald-600 font-medium">{ss.connected} connected</span>}
-                              {ss.notRequired > 0 && <span className="text-xs text-gray-400 font-medium">{ss.notRequired} skipped</span>}
-                              {ss.unbound > 0 && <span className="text-xs text-amber-600 font-medium">{ss.unbound} unbound</span>}
+                        <Card key={src.id} className="overflow-hidden">
+                          {/* Source header */}
+                          <div className="p-4">
+                            <div className="flex items-center gap-3">
+                              <div className="h-9 w-9 rounded-lg bg-accent flex items-center justify-center shrink-0">
+                                <Icon className="h-4.5 w-4.5 text-accent-foreground" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className="text-sm font-medium truncate text-foreground">{src.name}</p>
+                                  <Badge variant="secondary" className="text-[10px] shrink-0">{CATEGORY_LABELS[src.category] || src.category}</Badge>
+                                  <Badge variant="outline" className="text-[10px] shrink-0">{SOURCE_TYPE_LABELS[src.sourceType] || src.sourceType}</Badge>
+                                  {sourceBindingCount > 0 && (
+                                    <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] shrink-0">
+                                      {sourceBindingCount} binding{sourceBindingCount !== 1 ? "s" : ""}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground truncate mt-0.5">
+                                  {src.googleFileId.slice(0, 24)}…{src.sheetTab ? ` · Tab: ${src.sheetTab}` : ""}
+                                </p>
+                                {(src.createdByName || src.updatedByName) && (
+                                  <p className="text-[10px] text-muted-foreground/70 mt-0.5">
+                                    {src.createdByName && <>Created by {src.createdByName}</>}
+                                    {src.updatedByName && src.updatedByName !== src.createdByName && <> · Updated by {src.updatedByName}</>}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Edit source" onClick={() => openEditDialog(src)}>
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => window.open(getGoogleUrl(src), "_blank")} title="Open in Google">
+                                  <ExternalLink className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => deleteSourceMutation.mutate({ id: src.id })} title="Delete source">
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
                             </div>
-                          </button>
+                            {src.description && <p className="text-xs text-muted-foreground pl-12 mt-1">{src.description}</p>}
+
+                            {/* Expand/collapse bindings button */}
+                            <button
+                              className="flex items-center gap-1.5 mt-3 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+                              onClick={() => toggleSource(src.id)}
+                            >
+                              {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                              <Link2 className="h-3.5 w-3.5" />
+                              Source Bindings
+                              {sourceBindingCount > 0 && (
+                                <span className="text-muted-foreground font-normal">({sourceBindingCount} connected)</span>
+                              )}
+                            </button>
+                          </div>
+
+                          {/* Expanded bindings section */}
                           {isExpanded && (
-                            <div className="border-t">
-                              {slide.sections.map((sec, idx) => {
-                                const status = getStatus(slideType, sec.value);
-                                const binding = getBinding(slideType, sec.value);
-                                return (
-                                  <div key={sec.value} className={`flex items-center gap-3 px-5 py-3 ${idx < slide.sections.length - 1 ? "border-b" : ""} ${
-                                    status === "connected" ? "bg-emerald-50/40 dark:bg-emerald-950/10" :
-                                    status === "not_required" ? "bg-gray-50/60 dark:bg-gray-900/20" :
-                                    "bg-amber-50/30 dark:bg-amber-950/10"
-                                  }`}>
-                                    <div className="flex items-center gap-2 min-w-[220px]">
-                                      <Presentation className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                      <div>
-                                        <div className="text-sm font-medium">{sec.label}</div>
-                                        <div className="text-xs text-muted-foreground">Type: {sec.type}</div>
-                                      </div>
-                                    </div>
-                                    <div className="min-w-[120px]">
-                                      <StatusBadge status={status} />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      {status === "connected" && binding ? (
-                                        <div className="flex items-center gap-2">
-                                          <ArrowRight className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                                          <div className="min-w-0">
-                                            <div className="text-sm font-medium truncate flex items-center gap-1.5">
-                                              <FileText className="h-3 w-3 text-blue-500 shrink-0" />
-                                              {binding.sourceField}
-                                              <Badge variant="outline" className="text-[10px] font-normal ml-1">{binding.sourceFieldType}</Badge>
-                                            </div>
-                                            <div className="text-xs text-muted-foreground truncate">
-                                              {getSourceName(binding.dataSourceId) && <span>Source: {getSourceName(binding.dataSourceId)}</span>}
-                                              {binding.transformNotes && <span className="ml-2 italic">{binding.transformNotes}</span>}
-                                            </div>
-                                          </div>
+                            <div className="border-t bg-muted/20">
+                              <div className="px-4 py-3">
+                                <p className="text-xs text-muted-foreground mb-3">
+                                  Map fields from this source to MBR slide sections. Each section can be connected, marked as not required, or left unbound.
+                                </p>
+                                <div className="space-y-2">
+                                  {Object.entries(SLIDE_SECTIONS).map(([slideType, slide]) => {
+                                    // Check if any section in this slide has a binding from this source
+                                    const slideSectionBindings = slide.sections.map(sec => {
+                                      const b = bindingMap.get(`${slideType}::${sec.value}`);
+                                      return { sec, binding: b, isThisSource: b?.dataSourceId === src.id };
+                                    });
+                                    const hasBindingsFromThisSource = slideSectionBindings.some(s => s.isThisSource);
+                                    const hasAnyBinding = slideSectionBindings.some(s => s.binding);
+
+                                    return (
+                                      <div key={slideType} className="rounded-lg border bg-background">
+                                        <div className="px-3 py-2 flex items-center gap-2 text-xs">
+                                          <Presentation className="h-3.5 w-3.5 text-primary shrink-0" />
+                                          <span className="font-semibold">{slide.label}</span>
+                                          <span className="text-muted-foreground">({slide.sections.length} sections)</span>
+                                          {hasBindingsFromThisSource && (
+                                            <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[9px] ml-auto">
+                                              {slideSectionBindings.filter(s => s.isThisSource && s.binding?.bindingStatus === "connected").length} from this source
+                                            </Badge>
+                                          )}
                                         </div>
-                                      ) : status === "not_required" ? (
-                                        <span className="text-xs text-muted-foreground italic">Skipped — not needed for this pillar</span>
-                                      ) : (
-                                        <span className="text-xs text-amber-600 italic">No source connected yet</span>
-                                      )}
-                                    </div>
-                                    <div className="flex items-center gap-1 shrink-0">
-                                      {status === "connected" ? (
-                                        <>
-                                          <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={() => openConnect(slideType, sec.value, sec.label, sec.type)}>
-                                            <Settings2 className="h-3 w-3" /> Edit
-                                          </Button>
-                                          <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive hover:text-destructive gap-1" onClick={() => clearBinding(slideType, sec.value)}>
-                                            <X className="h-3 w-3" /> Clear
-                                          </Button>
-                                        </>
-                                      ) : status === "not_required" ? (
-                                        <>
-                                          <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={() => openConnect(slideType, sec.value, sec.label, sec.type)}>
-                                            <Link2 className="h-3 w-3" /> Connect
-                                          </Button>
-                                          <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive hover:text-destructive gap-1" onClick={() => clearBinding(slideType, sec.value)}>
-                                            <X className="h-3 w-3" /> Clear
-                                          </Button>
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => openConnect(slideType, sec.value, sec.label, sec.type)}>
-                                            <Link2 className="h-3 w-3" /> Connect
-                                          </Button>
-                                          <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground gap-1" onClick={() => markNotRequired(slideType, sec.value)}>
-                                            <Ban className="h-3 w-3" /> Not Required
-                                          </Button>
-                                        </>
-                                      )}
-                                    </div>
-                                  </div>
-                                );
-                              })}
+                                        <div className="border-t">
+                                          {slide.sections.map((sec, idx) => {
+                                            const binding = bindingMap.get(`${slideType}::${sec.value}`);
+                                            const isThisSource = binding?.dataSourceId === src.id;
+                                            const status: "connected" | "not_required" | "unbound" =
+                                              !binding ? "unbound" :
+                                              (binding.bindingStatus as any) === "not_required" ? "not_required" : "connected";
+                                            const editState = getEditState(src.id, slideType, sec.value);
+                                            const isEditing = !!editState;
+
+                                            return (
+                                              <div key={sec.value} className={`flex items-center gap-3 px-3 py-2.5 ${idx < slide.sections.length - 1 ? "border-b" : ""} ${
+                                                isEditing ? "bg-blue-50/50 dark:bg-blue-950/20" :
+                                                isThisSource && status === "connected" ? "bg-emerald-50/30 dark:bg-emerald-950/10" :
+                                                status === "not_required" && isThisSource ? "bg-gray-50/50 dark:bg-gray-900/10" :
+                                                ""
+                                              }`}>
+                                                {isEditing ? (
+                                                  /* ─── Inline Edit Mode ─── */
+                                                  <div className="flex-1 space-y-2">
+                                                    <div className="flex items-center gap-2">
+                                                      <span className="text-xs font-medium text-foreground">{sec.label}</span>
+                                                      <Badge variant="outline" className="text-[9px]">{sec.type}</Badge>
+                                                    </div>
+                                                    <div className="grid grid-cols-3 gap-2">
+                                                      <div>
+                                                        <Label className="text-[10px] text-muted-foreground">Source Field *</Label>
+                                                        <Input
+                                                          className="h-7 text-xs"
+                                                          placeholder="e.g., Budget Amount"
+                                                          value={editState.sourceField}
+                                                          onChange={(e) => updateEditBinding(src.id, slideType, sec.value, "sourceField", e.target.value)}
+                                                          autoFocus
+                                                        />
+                                                      </div>
+                                                      <div>
+                                                        <Label className="text-[10px] text-muted-foreground">Field Type</Label>
+                                                        <Select value={editState.sourceFieldType} onValueChange={(v) => updateEditBinding(src.id, slideType, sec.value, "sourceFieldType", v)}>
+                                                          <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                                                          <SelectContent>
+                                                            {SOURCE_FIELD_TYPES.map(t => (
+                                                              <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                                                            ))}
+                                                          </SelectContent>
+                                                        </Select>
+                                                      </div>
+                                                      <div>
+                                                        <Label className="text-[10px] text-muted-foreground">Notes</Label>
+                                                        <Input
+                                                          className="h-7 text-xs"
+                                                          placeholder="Transform notes..."
+                                                          value={editState.transformNotes}
+                                                          onChange={(e) => updateEditBinding(src.id, slideType, sec.value, "transformNotes", e.target.value)}
+                                                        />
+                                                      </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 pt-1">
+                                                      <Button size="sm" className="h-6 text-xs gap-1 px-2.5" onClick={() => saveBinding(src.id, slideType, sec.value, sec.type)} disabled={upsertBinding.isPending}>
+                                                        <Save className="h-3 w-3" /> Save
+                                                      </Button>
+                                                      <Button variant="outline" size="sm" className="h-6 text-xs gap-1 px-2.5" onClick={() => cancelEditBinding(src.id, slideType, sec.value)}>
+                                                        <X className="h-3 w-3" /> Cancel
+                                                      </Button>
+                                                    </div>
+                                                  </div>
+                                                ) : (
+                                                  /* ─── View Mode ─── */
+                                                  <>
+                                                    <div className="min-w-[160px]">
+                                                      <div className="text-xs font-medium text-foreground">{sec.label}</div>
+                                                      <div className="text-[10px] text-muted-foreground">Type: {sec.type}</div>
+                                                    </div>
+                                                    <div className="min-w-[90px]">
+                                                      <StatusBadge status={isThisSource ? status : (binding ? "connected" : "unbound")} />
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                      {isThisSource && status === "connected" && binding ? (
+                                                        <div className="flex items-center gap-1.5">
+                                                          <ArrowRight className="h-3 w-3 text-emerald-500 shrink-0" />
+                                                          <span className="text-xs font-medium truncate">{binding.sourceField}</span>
+                                                          <Badge variant="outline" className="text-[9px]">{binding.sourceFieldType}</Badge>
+                                                          {binding.transformNotes && <span className="text-[10px] text-muted-foreground italic truncate">{binding.transformNotes}</span>}
+                                                        </div>
+                                                      ) : isThisSource && status === "not_required" ? (
+                                                        <span className="text-[10px] text-muted-foreground italic">Skipped — not needed</span>
+                                                      ) : binding && !isThisSource ? (
+                                                        <span className="text-[10px] text-muted-foreground italic">
+                                                          Bound to: {getSourceName(binding.dataSourceId) || "another source"}
+                                                        </span>
+                                                      ) : (
+                                                        <span className="text-[10px] text-amber-600 italic">No source connected</span>
+                                                      )}
+                                                    </div>
+                                                    <div className="flex items-center gap-1 shrink-0">
+                                                      {isThisSource && status === "connected" ? (
+                                                        <>
+                                                          <Button variant="ghost" size="sm" className="h-6 text-[10px] gap-0.5 px-1.5" onClick={() => startEditBinding(src.id, slideType, sec.value, binding)}>
+                                                            <Pencil className="h-3 w-3" /> Edit
+                                                          </Button>
+                                                          <Button variant="ghost" size="sm" className="h-6 text-[10px] text-destructive hover:text-destructive gap-0.5 px-1.5" onClick={() => clearBinding(slideType, sec.value)}>
+                                                            <X className="h-3 w-3" /> Clear
+                                                          </Button>
+                                                        </>
+                                                      ) : isThisSource && status === "not_required" ? (
+                                                        <>
+                                                          <Button variant="ghost" size="sm" className="h-6 text-[10px] gap-0.5 px-1.5" onClick={() => startEditBinding(src.id, slideType, sec.value)}>
+                                                            <Link2 className="h-3 w-3" /> Connect
+                                                          </Button>
+                                                          <Button variant="ghost" size="sm" className="h-6 text-[10px] text-destructive hover:text-destructive gap-0.5 px-1.5" onClick={() => clearBinding(slideType, sec.value)}>
+                                                            <X className="h-3 w-3" /> Clear
+                                                          </Button>
+                                                        </>
+                                                      ) : !binding ? (
+                                                        <>
+                                                          <Button variant="outline" size="sm" className="h-6 text-[10px] gap-0.5 px-1.5" onClick={() => startEditBinding(src.id, slideType, sec.value)}>
+                                                            <Link2 className="h-3 w-3" /> Connect
+                                                          </Button>
+                                                          <Button variant="ghost" size="sm" className="h-6 text-[10px] text-muted-foreground gap-0.5 px-1.5" onClick={() => markNotRequired(slideType, sec.value, src.id)}>
+                                                            <Ban className="h-3 w-3" /> Skip
+                                                          </Button>
+                                                        </>
+                                                      ) : (
+                                                        <span className="text-[10px] text-muted-foreground italic">Other source</span>
+                                                      )}
+                                                    </div>
+                                                  </>
+                                                )}
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
                             </div>
                           )}
                         </Card>
@@ -947,9 +977,9 @@ export default function DataSources() {
                   </div>
                 )}
               </TabsContent>
-            </Tabs>
-          </TabsContent>
-        </Tabs>
+            ))}
+          </Tabs>
+        )}
       </div>
 
       {/* ─── Add Source Dialog ──────────────────────────────── */}
@@ -988,118 +1018,6 @@ export default function DataSources() {
         </DialogContent>
       </Dialog>
 
-      {/* ─── Add Slide Mapping Dialog ──────────────────────── */}
-      <Dialog open={mappingDialogOpen} onOpenChange={setMappingDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Link Source to Slide Component</DialogTitle>
-            <DialogDescription>Map a section of this data source to a specific MBR slide component.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label>Slide Component</Label>
-              <Select value={mappingSlideType} onValueChange={setMappingSlideType}>
-                <SelectTrigger><SelectValue placeholder="Select slide component..." /></SelectTrigger>
-                <SelectContent>
-                  {MAPPABLE_SLIDE_TYPES.map((st) => (
-                    <SelectItem key={st} value={st}>{SLIDE_TYPE_LABELS[st]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Source Section (optional)</Label>
-              <Input placeholder="e.g., Tab: Q1 Data, Column: B-F, Heading: Initiatives"
-                value={mappingSection} onChange={(e) => setMappingSection(e.target.value)} />
-              <p className="text-xs text-muted-foreground">Specify which part of the source feeds this slide.</p>
-            </div>
-            <div className="space-y-2">
-              <Label>Notes (optional)</Label>
-              <Input placeholder="e.g., Use rows where Status = Active"
-                value={mappingNotes} onChange={(e) => setMappingNotes(e.target.value)} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setMappingDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddMapping} disabled={createMappingMutation.isPending}>
-              {createMappingMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
-              Link to Slide
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ─── Connect / Edit Binding Dialog ─────────────────── */}
-      <Dialog open={connectDialogOpen} onOpenChange={(open) => { setConnectDialogOpen(open); if (!open) { setEditingSection(null); setEditingExistingBinding(null); } }}>
-        <DialogContent className="sm:max-w-[560px]">
-          <DialogHeader>
-            <DialogTitle>{editingExistingBinding ? "Edit Binding" : "Connect Source Field"}</DialogTitle>
-            <DialogDescription>
-              {editingSection && (
-                <>Map a data source field to <strong>{editingSection.sectionLabel}</strong> in the <strong>{SLIDE_SECTIONS[editingSection.slideType]?.label}</strong> slide.</>
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-2">
-            <div className="rounded-lg border p-3 bg-orange-50/50 dark:bg-orange-950/20">
-              <div className="flex items-center gap-2 text-sm font-semibold text-orange-800 dark:text-orange-300 mb-1">
-                <Presentation className="h-4 w-4" /> MBR Slide Target
-              </div>
-              <div className="text-sm">
-                <span className="font-medium">{SLIDE_SECTIONS[editingSection?.slideType ?? ""]?.label}</span>
-                {" → "}
-                <span className="font-medium">{editingSection?.sectionLabel}</span>
-                <Badge variant="outline" className="ml-2 text-[10px]">{editingSection?.sectionType}</Badge>
-              </div>
-            </div>
-            <div className="rounded-lg border p-3 bg-blue-50/50 dark:bg-blue-950/20 space-y-3">
-              <div className="flex items-center gap-2 text-sm font-semibold text-blue-800 dark:text-blue-300">
-                <FileText className="h-4 w-4" /> Data Source Field
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Field / Section Name <span className="text-destructive">*</span></Label>
-                <Input placeholder="e.g., Due Date, Summary, Payment Amount..." value={sourceField} onChange={(e) => setSourceField(e.target.value)} autoFocus />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Field Type</Label>
-                  <Select value={sourceFieldType} onValueChange={setSourceFieldType}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {SOURCE_FIELD_TYPES.map((t) => (
-                        <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Data Source</Label>
-                  <Select value={selectedDataSourceId} onValueChange={setSelectedDataSourceId}>
-                    <SelectTrigger><SelectValue placeholder="Optional..." /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No specific source</SelectItem>
-                      {allSources?.map((ds) => (
-                        <SelectItem key={ds.id} value={ds.id.toString()}>{ds.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Transform / Notes <span className="text-muted-foreground">(optional)</span></Label>
-                <Input placeholder="e.g., Sum all rows, format as currency..." value={transformNotes} onChange={(e) => setTransformNotes(e.target.value)} />
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConnectDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleSaveConnect} disabled={upsertBinding.isPending || !sourceField.trim()}>
-              {upsertBinding.isPending ? "Saving..." : editingExistingBinding ? "Save Changes" : "Connect"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* ─── Inactivity Warning ─────────────────────────── */}
       <InactivityWarningDialog
         open={showWarning}
@@ -1108,11 +1026,7 @@ export default function DataSources() {
         onExit={() => {
           setAddDialogOpen(false);
           setEditDialogOpen(false);
-          setMappingDialogOpen(false);
-          setConnectDialogOpen(false);
           setEditingSource(null);
-          setEditingSection(null);
-          setEditingExistingBinding(null);
           toast.error("Edit session closed.");
         }}
       />
@@ -1137,6 +1051,7 @@ export default function DataSources() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
       {/* ─── Activity Log ──────────────────────────────── */}
       <div className="mt-8">
         <button
@@ -1164,196 +1079,21 @@ export default function DataSources() {
 function StatusBadge({ status }: { status: "connected" | "not_required" | "unbound" }) {
   if (status === "connected") {
     return (
-      <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 gap-1 font-normal">
+      <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 gap-1 font-normal text-[10px]">
         <Check className="h-3 w-3" /> Connected
       </Badge>
     );
   }
   if (status === "not_required") {
     return (
-      <Badge className="bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 border-gray-200 dark:border-gray-700 gap-1 font-normal">
+      <Badge className="bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 border-gray-200 dark:border-gray-700 gap-1 font-normal text-[10px]">
         <Ban className="h-3 w-3" /> Not Required
       </Badge>
     );
   }
   return (
-    <Badge className="bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400 border-amber-200 dark:border-amber-800 gap-1 font-normal">
+    <Badge className="bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400 border-amber-200 dark:border-amber-800 gap-1 font-normal text-[10px]">
       <CircleDashed className="h-3 w-3" /> Unbound
     </Badge>
-  );
-}
-
-function EmptySourceState() {
-  return (
-    <Card>
-      <CardContent className="flex flex-col items-center justify-center py-16">
-        <Database className="h-12 w-12 text-muted-foreground/30 mb-4" />
-        <p className="text-muted-foreground mb-2">No data sources configured yet.</p>
-        <p className="text-xs text-muted-foreground max-w-sm text-center">
-          Add Google Docs, Sheets, or Slides that contain your MBR planning documents, content calendars, and budget data.
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
-
-interface SourceCardProps {
-  source: any; mappings: any[]; showMappings: boolean;
-  onDelete: () => void; onEdit: () => void; onDeleteMapping?: (id: number) => void;
-  onOpenMapping: () => void; getGoogleUrl: (src: any) => string;
-}
-
-function SourceCard({ source: src, mappings, showMappings, onDelete, onEdit, onDeleteMapping, onOpenMapping, getGoogleUrl }: SourceCardProps) {
-  const Icon = SOURCE_TYPE_ICONS[src.sourceType] || FileText;
-  return (
-    <Card>
-      <CardContent className="p-4 space-y-3">
-        <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-lg bg-accent flex items-center justify-center shrink-0">
-            <Icon className="h-4.5 w-4.5 text-accent-foreground" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <p className="text-sm font-medium truncate text-foreground">{src.name}</p>
-              <Badge variant="secondary" className="text-[10px] shrink-0">{CATEGORY_LABELS[src.category] || src.category}</Badge>
-              <Badge variant="outline" className="text-[10px] shrink-0">{SOURCE_TYPE_LABELS[src.sourceType] || src.sourceType}</Badge>
-            </div>
-            <p className="text-xs text-muted-foreground truncate mt-0.5">
-              {src.googleFileId.slice(0, 24)}…{src.sheetTab ? ` · Tab: ${src.sheetTab}` : ""}
-            </p>
-            {(src.createdByName || src.updatedByName) && (
-              <p className="text-[10px] text-muted-foreground/70 mt-0.5">
-                {src.createdByName && <>Created by {src.createdByName}</>}
-                {src.updatedByName && src.updatedByName !== src.createdByName && <> · Updated by {src.updatedByName}</>}
-              </p>
-            )}
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Edit source" onClick={onEdit}><Pencil className="h-3.5 w-3.5" /></Button>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Link to slide component" onClick={onOpenMapping}><Link2 className="h-3.5 w-3.5" /></Button>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => window.open(getGoogleUrl(src), "_blank")} title="Open in Google"><ExternalLink className="h-3.5 w-3.5" /></Button>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={onDelete} title="Delete source"><Trash2 className="h-3.5 w-3.5" /></Button>
-          </div>
-        </div>
-        {src.description && <p className="text-xs text-muted-foreground pl-12">{src.description}</p>}
-        {showMappings && mappings.length > 0 && (
-          <div className="pl-12 space-y-1.5">
-            <Separator className="mb-2" />
-            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Linked Slide Components</p>
-            {mappings.map((m) => (
-              <div key={m.id} className="flex items-center gap-2 text-xs bg-muted/50 rounded-md px-2.5 py-1.5">
-                <ArrowRight className="h-3 w-3 text-primary shrink-0" />
-                <span className="font-medium text-foreground">{SLIDE_TYPE_LABELS[m.slideType] || m.slideType}</span>
-                {m.sourceSection && <span className="text-muted-foreground">· {m.sourceSection}</span>}
-                {m.mappingNotes && <span className="text-muted-foreground italic">({m.mappingNotes})</span>}
-                <div className="ml-auto">
-                  <Button variant="ghost" size="sm" className="h-5 w-5 p-0 text-destructive hover:text-destructive"
-                    onClick={() => onDeleteMapping?.(m.id)} title="Remove mapping">
-                    <Unlink className="h-3 w-3" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-interface PillarSourceGroupProps {
-  pillarName: string; pillarId: number | null; sources: any[]; mappings: any[];
-  showMappings: boolean; onDelete: (id: number) => void; onEdit: (src: any) => void;
-  onOpenMapping: (sourceId: number) => void; getGoogleUrl: (src: any) => string;
-}
-
-function PillarSourceGroup({ pillarName, sources, mappings, showMappings, onDelete, onEdit, onOpenMapping, getGoogleUrl }: PillarSourceGroupProps) {
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        <Layers className="h-4 w-4 text-primary" />
-        <h3 className="text-sm font-semibold text-foreground">{pillarName}</h3>
-        <Badge variant="outline" className="text-[10px]">{sources.length} source{sources.length !== 1 ? "s" : ""}</Badge>
-      </div>
-      <div className="grid gap-2 pl-6">
-        {sources.map((src) => (
-          <SourceCard key={src.id} source={src}
-            mappings={mappings.filter((m) => m.dataSourceId === src.id)} showMappings={showMappings}
-            onDelete={() => onDelete(src.id)} onEdit={() => onEdit(src)}
-            onOpenMapping={() => onOpenMapping(src.id)} getGoogleUrl={getGoogleUrl}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-interface PillarDetailViewProps {
-  pillarName: string; pillarId: number; sources: any[]; mappings: any[];
-  mappingsBySource: Record<number, any[]>; onDelete: (id: number) => void;
-  onEdit: (src: any) => void; onDeleteMapping: (id: number) => void;
-  onOpenMapping: (sourceId: number) => void; getGoogleUrl: (src: any) => string;
-}
-
-function PillarDetailView({ pillarName, pillarId, sources, mappings, mappingsBySource, onDelete, onEdit, onDeleteMapping, onOpenMapping, getGoogleUrl }: PillarDetailViewProps) {
-  const coveredSlides = useMemo(() => {
-    const covered = new Set<string>();
-    for (const m of mappings) covered.add(m.slideType);
-    return covered;
-  }, [mappings]);
-
-  if (sources.length === 0) {
-    return (
-      <div className="space-y-4">
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Database className="h-10 w-10 text-muted-foreground/30 mb-3" />
-            <p className="text-sm text-muted-foreground mb-1">No sources configured for <span className="font-medium">{pillarName}</span>.</p>
-            <p className="text-xs text-muted-foreground">Add data sources and link them to slide components.</p>
-          </CardContent>
-        </Card>
-        <SlideCoverageMap coveredSlides={coveredSlides} />
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="grid gap-3">
-        {sources.map((src) => (
-          <SourceCard key={src.id} source={src}
-            mappings={mappingsBySource[src.id] || []} showMappings={true}
-            onDelete={() => onDelete(src.id)} onEdit={() => onEdit(src)}
-            onDeleteMapping={onDeleteMapping} onOpenMapping={() => onOpenMapping(src.id)}
-            getGoogleUrl={getGoogleUrl}
-          />
-        ))}
-      </div>
-      <SlideCoverageMap coveredSlides={coveredSlides} />
-    </div>
-  );
-}
-
-function SlideCoverageMap({ coveredSlides }: { coveredSlides: Set<string> }) {
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm flex items-center gap-2"><Settings2 className="h-4 w-4" />Slide Component Coverage</CardTitle>
-        <CardDescription className="text-xs">Green = linked, gray = no source yet.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-          {MAPPABLE_SLIDE_TYPES.map((st) => {
-            const linked = coveredSlides.has(st);
-            return (
-              <div key={st} className={`flex items-center gap-2 rounded-md border px-3 py-2 text-xs ${linked ? "border-green-500/30 bg-green-500/5 text-green-700 dark:text-green-400" : "border-border bg-muted/30 text-muted-foreground"}`}>
-                <div className={`h-2 w-2 rounded-full shrink-0 ${linked ? "bg-green-500" : "bg-muted-foreground/30"}`} />
-                <span className="truncate">{SLIDE_TYPE_LABELS[st]}</span>
-              </div>
-            );
-          })}
-        </div>
-      </CardContent>
-    </Card>
   );
 }

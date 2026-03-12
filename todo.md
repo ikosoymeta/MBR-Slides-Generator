@@ -164,3 +164,9 @@
 - [x] Update Autopilot pipeline to route data through binding configuration
 - [x] Skip slides/sections marked as Not Required based on binding status
 - [x] Push to GitHub after checkpoint (56cc095)
+- [x] REDESIGN: Remove "All Pillars" tab from Bindings — each pillar has its own bindings only
+- [x] REDESIGN: Move bindings display into Sources tab as expandable section on each source card
+- [x] REDESIGN: Show "Source Bindings" when expanding a source card
+- [x] REDESIGN: Allow users to view and edit bindings inline on source cards
+- [x] REDESIGN: Add Save and Cancel buttons for binding edits
+- [x] REDESIGN: Remove separate Bindings tab entirely — bindings live inside Sources
