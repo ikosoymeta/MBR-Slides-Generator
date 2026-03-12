@@ -739,6 +739,26 @@ function buildAllSlideRequests(
     }
   }
 
+  // ── Reposition DRI boxes to top-right corner (small, non-overlapping) ──
+  const driBoxIds = findDriBoxIds(slides);
+  for (const driId of driBoxIds) {
+    requests.push({
+      updatePageElementTransform: {
+        objectId: driId,
+        applyMode: "ABSOLUTE",
+        transform: {
+          scaleX: 0.55,
+          scaleY: 0.55,
+          translateX: 7200000,  // ~7.87" from left (right edge area on 10" wide slide)
+          translateY: 50000,    // ~0.05" from top
+          unit: "EMU",
+          shearX: 0,
+          shearY: 0,
+        },
+      },
+    });
+  }
+
   return requests;
 }
 
@@ -796,6 +816,29 @@ function findElementId(slide: any, predicate: (elem: any) => boolean): string | 
     if (predicate(elem)) return elem.objectId;
   }
   return null;
+}
+
+/** Find all DRI boxes across all slides and return their objectIds */
+function findDriBoxIds(slides: any[]): string[] {
+  const ids: string[] = [];
+  for (const slide of slides) {
+    for (const elem of slide.pageElements || []) {
+      const text = extractText(elem);
+      if (text && text.includes("DRI:")) {
+        ids.push(elem.objectId);
+      }
+      // Also check inside groups
+      if (elem.group) {
+        for (const child of elem.group.children || []) {
+          const childText = extractText(child);
+          if (childText && childText.includes("DRI:")) {
+            ids.push(child.objectId);
+          }
+        }
+      }
+    }
+  }
+  return ids;
 }
 
 /** Search inside group elements for a matching shape */

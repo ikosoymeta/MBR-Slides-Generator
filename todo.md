@@ -147,3 +147,4 @@
 - [x] Make pillar selection required when creating/editing Data Sources
 - [x] Add inline "Add New Pillar" option in Data Sources and Data Binding pillar dropdowns
 - [x] Remove "Unassigned" sources concept since pillar is now required
+- [x] BUG FIX: Green DRI box overlaps/blocks slide content text — repositioned to top-right corner, scaled down to 55%
