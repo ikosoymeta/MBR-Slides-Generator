@@ -24,4 +24,27 @@
 - [x] Input Mode 3: AI Chat mode - share details/links, AI generates slide content
 - [x] Project Name picker with auto-population of all related expense/budget fields
 - [x] AI chat interface for conversational slide content creation
+- [x] BUG FIX: Pillar, Team, and Project Name dropdowns showing no data from SF Main Expense Data
+- [x] BUG FIX: GWS commands failing from server process - fixed with spawnSync + token file
+- [x] Output folder: show existing year folders from parent folder as selectable dropdown
+- [x] Output folder: allow creating new subfolder in the parent folder
+- [x] UI: Make interface more user-friendly with better layout and flow
+- [x] AI Chat guided interview: walk user through each slide's required content
+- [x] AI Chat follow-up questions for missing information
+- [x] AI Chat preview offer before generation, option to add more slides
+- [x] AI Chat guide user through same process flow for additional slides
+- [x] Deep-inspect template slide placeholders and text fields for exact replacement tokens
+- [x] Map each template slide to its data source fields (expense data, calendar, planning doc)
+- [x] Build accurate text replacement for all 15 template slides with real data
+- [x] Populate budget/spend tables with actual expense data aggregated by team/project
+- [x] Populate launch schedule table from Horizon Content Calendar data
+- [x] Generate accurate executive summary and initiative narratives from real data
 - [ ] Push code to GitHub repo ikosoymeta/MBR-SLides-Generator after each checkpoint
+- [ ] Slide-by-slide builder: users can add individual slides selecting from template types
+- [ ] Add multiple slides at once via bulk selection
+- [ ] Add more slides to an existing deck after initial generation
+- [ ] Each slide independently configurable with its own content and data source
+- [ ] Slide reordering and removal in the builder
+- [ ] Preview option: show slide-by-slide preview of content before generating final deck
+- [ ] Handle chart/graph data in template slides (Sheets-linked charts or embedded chart data)
+- [ ] End-to-end test: generate a real MBR deck and verify output in Google Slides

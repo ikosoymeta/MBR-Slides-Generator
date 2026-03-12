@@ -90,9 +90,20 @@ export const appRouter = router({
 
   // ─── Google Integration ───────────────────────────────────────
   google: router({
-    fetchExpenseFilters: protectedProcedure.query(() =>
-      google.fetchExpenseFilters()
-    ),
+    fetchExpenseFilters: protectedProcedure.query(async () => {
+      try {
+        return await google.fetchExpenseFilters();
+      } catch (e: any) {
+        console.warn("[GWS Fallback] fetchExpenseFilters failed, using PILLAR_TEAMS:", e.message?.substring(0, 100));
+        // Fallback to hardcoded pillar/team data
+        const pillars = Object.keys(PILLAR_TEAMS).sort();
+        const teams: Record<string, string[]> = {};
+        for (const [p, t] of Object.entries(PILLAR_TEAMS)) {
+          teams[p] = t as string[];
+        }
+        return { pillars, teams, years: ["2024", "2025", "2026"], months: ["January","February","March","April","May","June","July","August","September","October","November","December"] };
+      }
+    }),
     fetchExpenseData: protectedProcedure
       .input(z.object({
         pillar: z.string().optional(),
@@ -121,8 +132,17 @@ export const appRouter = router({
         google.createDriveFolder(input.name, input.parentFolderId)
       ),
     listOutputFolders: protectedProcedure
-      .input(z.object({ year: z.string() }))
-      .query(({ input }) => google.listOutputFolders(input.year)),
+      .query(async () => {
+        try {
+          return await google.listOutputFolders();
+        } catch (e: any) {
+          console.warn("[GWS Fallback] listOutputFolders failed:", e.message?.substring(0, 100));
+          return [];
+        }
+      }),
+    listYearSubfolders: protectedProcedure
+      .input(z.object({ yearFolderId: z.string() }))
+      .query(({ input }) => google.listYearSubfolders(input.yearFolderId)),
     listExistingDecks: protectedProcedure
       .input(z.object({ folderId: z.string() }))
       .query(({ input }) => google.listExistingMbrDecks(input.folderId)),
@@ -142,6 +162,12 @@ export const appRouter = router({
     fetchSheetFromUrl: protectedProcedure
       .input(z.object({ url: z.string(), tab: z.string().optional() }))
       .query(({ input }) => google.fetchSheetFromUrl(input.url, input.tab)),
+    fetchMasterSummary: protectedProcedure.query(() =>
+      google.fetchMasterSummary()
+    ),
+    fetchBudgetByTeamProject: protectedProcedure
+      .input(z.object({ pillar: z.string(), year: z.string() }))
+      .query(({ input }) => google.fetchBudgetByTeamProject(input.pillar, input.year)),
   }),
 
   // ─── MBR Generation ──────────────────────────────────────────
@@ -170,6 +196,27 @@ export const appRouter = router({
         outputFolderId: z.string(),
         templateId: z.string().optional(),
         customTitle: z.string().optional(),
+        manualContent: z.object({
+          executiveSummary: z.string().optional(),
+          initiatives: z.array(z.object({
+            name: z.string(),
+            outcome: z.string(),
+            updates: z.string(),
+            risks: z.string(),
+          })).optional(),
+          launchItems: z.array(z.object({
+            date: z.string(),
+            title: z.string(),
+            quarter: z.string(),
+          })).optional(),
+          keyDates: z.array(z.object({
+            date: z.string(),
+            title: z.string(),
+            quarter: z.string(),
+          })).optional(),
+        }).optional(),
+        /** Which template slides to include (by index). If omitted, all slides are included. */
+        selectedSlides: z.array(z.number()).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         // Create generation record
@@ -199,6 +246,8 @@ export const appRouter = router({
             outputFolderId: input.outputFolderId,
             templateId: input.templateId || GOOGLE_IDS.MBR_TEMPLATE,
             customTitle: input.customTitle,
+            manualContent: input.manualContent,
+            selectedSlides: input.selectedSlides,
           });
 
           // Update generation record
@@ -236,7 +285,7 @@ export const appRouter = router({
         }
       }),
 
-    /** AI chat for conversational slide content creation */
+    /** AI chat for guided interview-style slide content creation */
     aiChat: protectedProcedure
       .input(z.object({
         messages: z.array(z.object({
@@ -248,25 +297,61 @@ export const appRouter = router({
           month: z.number().optional(),
           year: z.number().optional(),
           projectName: z.string().optional(),
+          selectedSlides: z.array(z.string()).optional(),
         }).optional(),
       }))
       .mutation(async ({ input }) => {
-        const systemPrompt = `You are an MBR (Monthly Business Review) slide content assistant for a high-tech company. Help users create content for MBR presentation slides.
+        const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+        const ctxPillar = input.context?.pillarName || "Not set";
+        const ctxMonth = input.context?.month ? monthNames[input.context.month - 1] : "Not set";
+        const ctxYear = input.context?.year || "Not set";
+        const ctxProject = input.context?.projectName || "Not set";
+        const selectedSlides = input.context?.selectedSlides || [];
 
-You can help with:
-- Writing executive summaries
-- Describing initiative updates and progress
-- Summarizing budget and spend data
-- Creating launch schedule descriptions
-- Identifying risks and blockers
-- Formatting content for presentation slides
+        const systemPrompt = `You are an MBR (Monthly Business Review) slide content assistant for a high-tech company. You conduct a guided interview to collect all information needed for each slide in the MBR deck.
 
-When a user shares a Google Doc or Sheet URL, acknowledge it and explain you'll use that data.
-When a user describes their initiatives or updates, help structure them into MBR slide format.
+## Your Behavior
+1. **Greet the user** and confirm the MBR context (pillar, month, year).
+2. **Walk through each slide one at a time**, asking specific questions to gather the required content.
+3. **Ask follow-up questions** if answers are vague, incomplete, or missing key details.
+4. **When the user shares a Google Doc or Sheet URL**, acknowledge it and explain you extracted the data.
+5. **After gathering info for all slides**, present a summary of what you collected and ask:
+   - "Would you like to preview the slides before generating?"
+   - "Would you like to add more slides or modify any content?"
+   - "Ready to generate the deck?"
+6. When the user confirms, respond with a structured JSON block wrapped in \`\`\`json ... \`\`\` containing the collected slide content.
 
-Context: ${input.context ? `Pillar: ${input.context.pillarName || "Not set"}, Month: ${input.context.month || "Not set"}, Year: ${input.context.year || "Not set"}, Project: ${input.context.projectName || "Not set"}` : "No context set yet."}
+## Slide Types to Cover (in order)
+The selected slides for this deck are: ${selectedSlides.length > 0 ? selectedSlides.join(", ") : "All standard slides"}.
 
-Always respond with structured, professional business language suitable for executive presentations. Format your responses with clear sections when generating slide content.`;
+For each applicable slide, ask about:
+- **Executive Summary**: Key highlights, spend status vs plan, major milestones achieved, risks/blockers
+- **Initiatives & Goals**: For each initiative: name, business outcome, target release, measurement criteria, status (On Track/At Risk/Behind)
+- **Initiative Deep Dive**: Pick the most important initiative - detailed updates, risks, supporting documents
+- **Launch Schedule**: Upcoming launches by quarter - title, date, type
+- **Key Dates & Milestones**: Important upcoming dates and deadlines
+- **Budget Update**: Any commentary on budget chart (chart is auto-linked from spreadsheet)
+- **T&E**: Travel & entertainment highlights or concerns
+- **Appendix**: Any additional reference material to include
+
+## Current Context
+- Pillar: ${ctxPillar}
+- Month: ${ctxMonth}
+- Year: ${ctxYear}
+- Project: ${ctxProject}
+
+## Output Format
+When all info is gathered and user confirms generation, output a JSON block like:
+\`\`\`json
+{
+  "executiveSummary": "...",
+  "initiatives": [{"name": "...", "outcome": "...", "updates": "...", "risks": "..."}],
+  "launchItems": [{"date": "...", "title": "...", "quarter": "Q1"}],
+  "keyDates": [{"date": "...", "title": "...", "quarter": "Q1"}]
+}
+\`\`\`
+
+Always use professional business language suitable for executive presentations. Be concise but thorough.`;
 
         // Check if user shared a Google Doc/Sheet URL - fetch content
         const lastMsg = input.messages[input.messages.length - 1];
