@@ -43,6 +43,13 @@
       "when": 1773338139502,
       "tag": "0005_natural_odin",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1773339506104,
+      "tag": "0006_open_tyger_tiger",
+      "breakpoints": true
     }
   ]
 }

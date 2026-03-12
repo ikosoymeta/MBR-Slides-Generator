@@ -17,6 +17,8 @@
 import * as google from "./google";
 import { invokeLLM } from "../_core/llm";
 import { GOOGLE_IDS } from "../../shared/types";
+import { resolveBindings, type ResolvedBindings } from "./bindingResolver";
+import { logError, logException } from "./errorLogger";
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -488,6 +490,7 @@ Output MUST be valid JSON matching this exact structure:
 
 export interface AutopilotConfig {
   pillarName: string;
+  pillarConfigId?: number;
   month: number;
   year: number;
   projectName?: string;
@@ -500,6 +503,7 @@ export async function runAutopilotCollection(config: AutopilotConfig): Promise<{
   agents: AgentResult[];
   conflicts: Conflict[];
   synthesizedContent: SynthesizedContent;
+  resolvedBindings?: ResolvedBindings;
 }> {
   const monthNames = [
     "January", "February", "March", "April", "May", "June",
@@ -507,6 +511,26 @@ export async function runAutopilotCollection(config: AutopilotConfig): Promise<{
   ];
   const monthStr = monthNames[config.month - 1] || "January";
   const yearStr = String(config.year);
+
+  // Phase 0: Resolve field bindings if pillarConfigId is provided
+  let resolvedBindings: ResolvedBindings | undefined;
+  if (config.pillarConfigId) {
+    try {
+      resolvedBindings = await resolveBindings(config.pillarConfigId);
+      await logError({
+        severity: "info",
+        source: "autopilot.collection",
+        message: `Resolved ${resolvedBindings.stats.connected} bindings, ${resolvedBindings.stats.notRequired} skipped, ${resolvedBindings.skippedSlides.length} slides fully skipped`,
+        pillarConfigId: config.pillarConfigId,
+        context: { stats: resolvedBindings.stats, skippedSlides: resolvedBindings.skippedSlides },
+      });
+    } catch (err) {
+      await logException(err, "autopilot.resolveBindings", {
+        pillarConfigId: config.pillarConfigId,
+      });
+      // Continue without bindings — fall back to default behavior
+    }
+  }
 
   // Phase 1: Run all data source agents in parallel
   const agentPromises = [
@@ -520,11 +544,33 @@ export async function runAutopilotCollection(config: AutopilotConfig): Promise<{
 
   const agents = await Promise.all(agentPromises);
 
+  // Log agent results
+  for (const agent of agents) {
+    if (agent.status === "error") {
+      await logError({
+        severity: "warning",
+        source: `autopilot.agent.${agent.agentName}`,
+        message: `Agent failed: ${agent.error}`,
+        pillarConfigId: config.pillarConfigId,
+        context: { agentName: agent.agentName, durationMs: agent.durationMs },
+      });
+    }
+  }
+
   // Phase 2: Detect conflicts
   const conflicts = detectConflicts(agents);
+  if (conflicts.length > 0) {
+    await logError({
+      severity: "warning",
+      source: "autopilot.conflicts",
+      message: `${conflicts.length} conflicts detected during data collection`,
+      pillarConfigId: config.pillarConfigId,
+      context: { conflicts: conflicts.map(c => ({ field: c.field, severity: c.severity })) },
+    });
+  }
 
   // Phase 3: Synthesize content via LLM
   const synthesizedContent = await synthesizeContent(agents, config.pillarName, monthStr, yearStr);
 
-  return { agents, conflicts, synthesizedContent };
+  return { agents, conflicts, synthesizedContent, resolvedBindings };
 }

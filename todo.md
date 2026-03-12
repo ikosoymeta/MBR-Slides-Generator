@@ -110,3 +110,24 @@
 - [x] Allow connecting a source field to each section or marking as Not Required
 - [x] Add bindingStatus (connected/not_required/unbound) to field_bindings schema
 - [x] Show coverage summary: X of Y sections connected, Z marked not required
+- [ ] Create binding resolver service that reads field bindings and maps source data to slide sections
+- [ ] Integrate binding resolver into Autopilot pipeline (data agent outputs → binding config → slide sections)
+- [ ] Update slide generator to use binding configuration instead of hardcoded field mappings
+- [ ] Show binding coverage status in Autopilot UI (which bindings are active/used during generation)
+- [ ] Skip slides/sections marked as Not Required during generation
+- [ ] Test end-to-end: Autopilot uses bindings to route data to correct slide sections
+- [ ] Create binding resolver service that reads field bindings and maps source data to slide sections
+- [ ] Integrate binding resolver into Autopilot pipeline (replace hardcoded data routing)
+- [ ] Skip slides/sections marked as Not Required based on binding status
+- [ ] Add autopilot_schedules table (frequency, time, pillar, enabled)
+- [ ] Add server routes for schedule CRUD
+- [ ] Build scheduling UI: frequency picker (daily/weekly/monthly), time picker, pillar selector
+- [ ] Implement cron-based scheduler that triggers Autopilot at configured times
+- [ ] Show most recent Autopilot run status in top-right corner of DashboardLayout
+- [ ] Show next scheduled run time in the status indicator
+- [ ] Add error_logs table for tracking errors across the system
+- [ ] Add error logging service that captures errors with context (source, stack, user action)
+- [ ] Add Error Log viewer page with filtering by severity, date, source
+- [ ] Add Error Log navigation entry to sidebar
+- [ ] Wire error logging into Autopilot pipeline, slide generator, and data fetching
+- [x] BUG FIX: autopilotSchedules.lastRun query returns undefined causing tRPC/React Query error

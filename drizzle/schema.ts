@@ -163,3 +163,66 @@ export const fieldBindings = mysqlTable("field_bindings", {
 
 export type FieldBinding = typeof fieldBindings.$inferSelect;
 export type InsertFieldBinding = typeof fieldBindings.$inferInsert;
+
+/** Autopilot schedule configurations */
+export const autopilotSchedules = mysqlTable("autopilot_schedules", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  pillarConfigId: int("pillarConfigId").notNull(),
+  /** Schedule frequency */
+  frequency: mysqlEnum("frequency", ["daily", "weekly", "monthly"]).default("monthly").notNull(),
+  /** Day of week for weekly (0=Sun..6=Sat), day of month for monthly (1-28) */
+  dayOfWeekOrMonth: int("dayOfWeekOrMonth"),
+  /** Hour of day in 24h format (0-23) */
+  hour: int("hour").default(9).notNull(),
+  /** Minute (0-59) */
+  minute: int("minute").default(0).notNull(),
+  /** Timezone string e.g. 'America/Los_Angeles' */
+  timezone: varchar("timezone", { length: 100 }).default("America/Los_Angeles").notNull(),
+  /** Output folder ID for generated decks */
+  outputFolderId: varchar("outputFolderId", { length: 255 }),
+  /** Whether this schedule is enabled */
+  isEnabled: boolean("isEnabled").default(true).notNull(),
+  /** Last run timestamp */
+  lastRunAt: timestamp("lastRunAt"),
+  /** Last run status */
+  lastRunStatus: mysqlEnum("lastRunStatus", ["success", "failed", "running", "cancelled"]),
+  /** Last run error message */
+  lastRunError: text("lastRunError"),
+  /** Last generated presentation URL */
+  lastRunOutputUrl: varchar("lastRunOutputUrl", { length: 1000 }),
+  /** Next scheduled run */
+  nextRunAt: timestamp("nextRunAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type AutopilotSchedule = typeof autopilotSchedules.$inferSelect;
+export type InsertAutopilotSchedule = typeof autopilotSchedules.$inferInsert;
+
+/** Error logs for troubleshooting */
+export const errorLogs = mysqlTable("error_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Error severity */
+  severity: mysqlEnum("severity", ["info", "warning", "error", "critical"]).default("error").notNull(),
+  /** Source module/service that generated the error */
+  source: varchar("source", { length: 255 }).notNull(),
+  /** Short error message */
+  message: text("message").notNull(),
+  /** Full stack trace */
+  stackTrace: text("stackTrace"),
+  /** Additional context as JSON */
+  context: json("context").$type<Record<string, unknown>>(),
+  /** Related generation ID if applicable */
+  generationId: int("generationId"),
+  /** Related pillar config ID if applicable */
+  pillarConfigId: int("pillarConfigId"),
+  /** User ID who triggered the action */
+  userId: int("userId"),
+  /** Whether this error has been resolved/acknowledged */
+  isResolved: boolean("isResolved").default(false).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ErrorLog = typeof errorLogs.$inferSelect;
+export type InsertErrorLog = typeof errorLogs.$inferInsert;

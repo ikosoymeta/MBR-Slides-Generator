@@ -11,6 +11,8 @@ import DataSources from "./pages/DataSources";
 import Pillars from "./pages/Pillars";
 import Settings from "./pages/Settings";
 import DataBinding from "./pages/DataBinding";
+import ErrorLogs from "./pages/ErrorLogs";
+import Autopilot from "./pages/Autopilot";
 
 function Router() {
   return (
@@ -21,6 +23,8 @@ function Router() {
       <Route path="/data-sources" component={DataSources} />
       <Route path="/pillars" component={Pillars} />
       <Route path="/data-binding" component={DataBinding} />
+      <Route path="/error-logs" component={ErrorLogs} />
+      <Route path="/autopilot" component={Autopilot} />
       <Route path="/settings" component={Settings} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />

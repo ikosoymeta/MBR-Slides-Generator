@@ -2,6 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import * as db from "./db";
 import * as google from "./services/google";
@@ -9,6 +10,7 @@ import { generateMbrDeck } from "./services/slideGenerator";
 import { runAutopilotCollection } from "./services/autopilot";
 import { GOOGLE_IDS, PILLAR_TEAMS } from "../shared/types";
 import { invokeLLM } from "./_core/llm";
+import { listErrorLogs as listErrorLogsSvc, getErrorSummary, resolveError } from "./services/errorLogger";
 
 export const appRouter = router({
   system: systemRouter,
@@ -228,7 +230,10 @@ export const appRouter = router({
     list: protectedProcedure.query(() => db.listPillarConfigs()),
     get: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .query(({ input }) => db.getPillarConfig(input.id)),
+      .query(async ({ input }) => {
+        const result = await db.getPillarConfig(input.id);
+        return result ?? null;
+      }),
     upsert: protectedProcedure
       .input(z.object({
         id: z.number().optional(),
@@ -352,10 +357,25 @@ export const appRouter = router({
     ),
     get: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .query(({ input }) => db.getMbrGeneration(input.id)),
+      .query(async ({ input }) => {
+        const result = await db.getMbrGeneration(input.id);
+        return result ?? null;
+      }),
     getLogs: protectedProcedure
       .input(z.object({ generationId: z.number() }))
       .query(({ input }) => db.getGenerationLogs(input.generationId)),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        // Verify ownership
+        const gen = await db.getMbrGeneration(input.id);
+        if (!gen || gen.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Generation not found" });
+        }
+        await db.deleteMbrGeneration(input.id);
+        return { success: true };
+      }),
 
     generate: protectedProcedure
       .input(z.object({
@@ -581,6 +601,84 @@ Always use professional business language suitable for executive presentations. 
         const rawContent = response.choices?.[0]?.message?.content;
         const content = typeof rawContent === "string" ? rawContent : "Could not generate response.";
         return { content };
+      }),
+  }),
+
+  // ─── Autopilot Schedules ────────────────────────────────────────────
+  autopilotSchedules: router({
+    list: protectedProcedure.query(({ ctx }) =>
+      db.listAutopilotSchedules(ctx.user.id)
+    ),
+    getByPillar: protectedProcedure
+      .input(z.object({ pillarConfigId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const result = await db.getScheduleByPillar(input.pillarConfigId, ctx.user.id);
+        return result ?? null;
+      }),
+    upsert: protectedProcedure
+      .input(z.object({
+        pillarConfigId: z.number(),
+        frequency: z.enum(["daily", "weekly", "monthly"]),
+        dayOfWeekOrMonth: z.number().optional(),
+        hour: z.number().min(0).max(23),
+        minute: z.number().min(0).max(59),
+        timezone: z.string().default("America/Los_Angeles"),
+        outputFolderId: z.string().optional(),
+        isEnabled: z.boolean().default(true),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const result = await db.upsertAutopilotSchedule({
+          userId: ctx.user.id,
+          pillarConfigId: input.pillarConfigId,
+          frequency: input.frequency,
+          dayOfWeekOrMonth: input.dayOfWeekOrMonth ?? null,
+          hour: input.hour,
+          minute: input.minute,
+          timezone: input.timezone,
+          outputFolderId: input.outputFolderId ?? null,
+          isEnabled: input.isEnabled,
+        });
+        return result;
+      }),
+    toggleEnabled: protectedProcedure
+      .input(z.object({ id: z.number(), isEnabled: z.boolean() }))
+      .mutation(async ({ input }) => {
+        await db.updateAutopilotSchedule(input.id, { isEnabled: input.isEnabled });
+        return { success: true };
+      }),
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.deleteAutopilotSchedule(input.id);
+        return { success: true };
+      }),
+    lastRun: protectedProcedure.query(async ({ ctx }) => {
+      const result = await db.getLastAutopilotRun(ctx.user.id);
+      return result ?? null;
+    }),
+  }),
+
+  // ─── Error Logs ───────────────────────────────────────────────────
+  errorLogs: router({
+    list: protectedProcedure
+      .input(z.object({
+        severity: z.enum(["info", "warning", "error", "critical"]).optional(),
+        source: z.string().optional(),
+        isResolved: z.boolean().optional(),
+        limit: z.number().default(50),
+        offset: z.number().default(0),
+      }).optional())
+      .query(async ({ input }) => {
+        return listErrorLogsSvc(input || {});
+      }),
+    summary: protectedProcedure.query(async () => {
+      return getErrorSummary();
+    }),
+    resolve: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await resolveError(input.id);
+        return { success: true };
       }),
   }),
 });
