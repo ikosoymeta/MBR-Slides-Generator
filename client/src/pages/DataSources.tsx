@@ -71,6 +71,8 @@ import {
   Zap,
   Search,
   Info,
+  ArrowLeftRight,
+  SquarePen,
 } from "lucide-react";
 
 // ─── Constants ──────────────────────────────────────────────────
@@ -219,8 +221,29 @@ const DYNAMIC_DATE_OPTIONS = [
   { value: "previous_month_year", label: "Previous Month & Year", preview: "e.g., February 2026" },
   { value: "current_quarter", label: "Current Quarter", preview: "e.g., Q1 2026" },
   { value: "fiscal_year", label: "Fiscal Year", preview: "e.g., FY2026" },
+  { value: "q1_dynamic_year", label: "Q1 + Dynamic Year", preview: "e.g., Q1 2026" },
+  { value: "q2_dynamic_year", label: "Q2 + Dynamic Year", preview: "e.g., Q2 2026" },
+  { value: "q3_dynamic_year", label: "Q3 + Dynamic Year", preview: "e.g., Q3 2026" },
+  { value: "q4_dynamic_year", label: "Q4 + Dynamic Year", preview: "e.g., Q4 2026" },
+  { value: "custom_interval", label: "Custom Interval", preview: "e.g., Jan-Mar 2026" },
   { value: "custom_format", label: "Custom Format", preview: "Specify your own format" },
 ];
+
+// Binding modes for Autopilot autonomy
+type BindingMode = "source" | "dynamic" | "fixed" | "free_text" | "skip";
+
+const BINDING_MODE_CONFIG: Record<BindingMode, { label: string; icon: typeof Link2; color: string; bgClass: string; description: string }> = {
+  source: { label: "From Source", icon: Link2, color: "text-emerald-700", bgClass: "bg-emerald-50 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800", description: "Pull value from a connected data source column" },
+  dynamic: { label: "Dynamic Date", icon: Calendar, color: "text-blue-700", bgClass: "bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-800", description: "Auto-generate date/quarter/year at deck creation" },
+  fixed: { label: "Fixed Value", icon: Lock, color: "text-purple-700", bgClass: "bg-purple-50 border-purple-200 dark:bg-purple-950/20 dark:border-purple-800", description: "Same constant value every Autopilot run" },
+  free_text: { label: "Free Text", icon: SquarePen, color: "text-orange-700", bgClass: "bg-orange-50 border-orange-200 dark:bg-orange-950/20 dark:border-orange-800", description: "Enter custom text directly for this field" },
+  skip: { label: "Skip", icon: Ban, color: "text-gray-500", bgClass: "bg-gray-50 border-gray-200 dark:bg-gray-800/30 dark:border-gray-700", description: "Not required — Autopilot will leave blank" },
+};
+
+function getAvailableModes(sectionType: string): BindingMode[] {
+  if (sectionType === "date") return ["source", "dynamic", "fixed", "free_text", "skip"];
+  return ["source", "fixed", "free_text", "skip"];
+}
 
 function getAllSections() {
   const result: { slideType: string; slideLabel: string; sectionValue: string; sectionLabel: string; sectionType: string }[] = [];
@@ -256,30 +279,23 @@ type EditBindingState = {
   dynamicDateType: string;
   dynamicDateFormat: string;
   hardcodedValue: string;
-  bindingMode: "source" | "dynamic" | "hardcoded";
+  bindingMode: BindingMode;
 };
 
-// Helper to determine if a section type supports dynamic dates
 function isDateType(sectionType: string): boolean {
   return sectionType === "date";
 }
 
-// Helper to determine if a section type supports hardcoded values
-function isHardcodableType(sectionType: string): boolean {
-  return ["string", "number", "currency"].includes(sectionType);
-}
-
-// ─── Main Component ─────────────────────────────────────────────
+// ─── Main Component ────────────────────────────────────────────
 
 export default function DataSources() {
   const utils = trpc.useUtils();
   const { data: pillars, isLoading: pillarsLoading } = trpc.pillars.list.useQuery();
   const { data: allSources, isLoading: sourcesLoading } = trpc.dataSources.list.useQuery();
 
-  // Pillar tab selection — default to first pillar
+  // Pillar tab selection
   const [selectedPillarId, setSelectedPillarId] = useState<string>("");
 
-  // Auto-select first pillar when loaded
   const effectivePillarId = useMemo(() => {
     if (selectedPillarId && pillars?.some(p => String(p.id) === selectedPillarId)) return selectedPillarId;
     if (pillars && pillars.length > 0) return String(pillars[0].id);
@@ -287,6 +303,11 @@ export default function DataSources() {
   }, [selectedPillarId, pillars]);
 
   const numericPillarId = effectivePillarId ? Number(effectivePillarId) : null;
+
+  const currentPillarName = useMemo(() => {
+    if (!pillars || !numericPillarId) return "";
+    return pillars.find(p => p.id === numericPillarId)?.pillarName || "";
+  }, [pillars, numericPillarId]);
 
   // ─── Source Dialogs ───────────────────────────────────────────
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -311,18 +332,22 @@ export default function DataSources() {
   const [editCategory, setEditCategory] = useState<string>("other");
   const [editPillarId, setEditPillarId] = useState<string>("");
 
-  // Expanded sources (to show bindings)
+  // Expanded sources
   const [expandedSources, setExpandedSources] = useState<Set<number>>(new Set());
 
-  // Inline binding edit state: sourceId -> editing state
+  // Inline binding edit state
   const [editingBindings, setEditingBindings] = useState<Map<number, Map<string, EditBindingState>>>(new Map());
 
-  // Column suggestions: sourceId -> fetched columns
+  // Column suggestions
   const [fetchingColumns, setFetchingColumns] = useState<Set<number>>(new Set());
 
   // Add New Pillar state
   const [newPillarDialogOpen, setNewPillarDialogOpen] = useState(false);
   const [newPillarName, setNewPillarName] = useState("");
+
+  // Configure dialog state (for the reference-style Configure action)
+  const [configDialogOpen, setConfigDialogOpen] = useState(false);
+  const [configTarget, setConfigTarget] = useState<{ sourceId: number; slideType: string; sectionValue: string; sectionType: string; sectionLabel: string } | null>(null);
 
   // ─── Queries ──────────────────────────────────────────────────
   const bindingsQuery = trpc.fieldBindings.list.useQuery(
@@ -374,7 +399,6 @@ export default function DataSources() {
     onError: (err: any) => toast.error(err.message),
   });
 
-  // Binding mutations
   const upsertBinding = trpc.fieldBindings.upsert.useMutation({
     onSuccess: () => {
       utils.fieldBindings.list.invalidate();
@@ -407,14 +431,12 @@ export default function DataSources() {
     return counts;
   }, [allSources]);
 
-  // Binding map: key = "slideType::sectionValue"
   const bindingMap = useMemo(() => {
     const map = new Map<string, FieldBinding>();
     for (const b of bindings) map.set(`${b.slideType}::${b.slideSection}`, b);
     return map;
   }, [bindings]);
 
-  // Bindings grouped by dataSourceId
   const bindingsBySource = useMemo(() => {
     const map = new Map<number, FieldBinding[]>();
     for (const b of bindings) {
@@ -427,7 +449,6 @@ export default function DataSources() {
     return map;
   }, [bindings]);
 
-  // Binding stats for the current pillar
   const bindingStats = useMemo(() => {
     let connected = 0, notRequired = 0, unbound = 0;
     for (const sec of ALL_SECTIONS) {
@@ -508,11 +529,7 @@ export default function DataSources() {
       const next = new Set(prev);
       if (next.has(sourceId)) {
         next.delete(sourceId);
-        setEditingBindings(prev => {
-          const next = new Map(prev);
-          next.delete(sourceId);
-          return next;
-        });
+        setEditingBindings(prev => { const n = new Map(prev); n.delete(sourceId); return n; });
       } else {
         next.add(sourceId);
       }
@@ -521,27 +538,60 @@ export default function DataSources() {
   }
 
   // ─── Inline binding edit helpers ─────────────────────────────
-  function determineBindingMode(existing?: FieldBinding): "source" | "dynamic" | "hardcoded" {
-    if (existing?.isDynamic) return "dynamic";
-    if (existing?.hardcodedValue) return "hardcoded";
+  function determineBindingMode(existing?: FieldBinding, sectionType?: string): BindingMode {
+    if (existing) {
+      if ((existing.bindingStatus as string) === "not_required") return "skip";
+      if (existing.isDynamic) return "dynamic";
+      if (existing.hardcodedValue && existing.sourceField === "[Hardcoded]") return "fixed";
+      if (existing.hardcodedValue && existing.sourceField === "[Free Text]") return "free_text";
+      // Legacy: check if sourceField looks like free text
+      if (existing.sourceField?.startsWith("[Free Text]")) return "free_text";
+      return "source";
+    }
+    // Default for new bindings
+    if (isDateType(sectionType || "")) return "dynamic";
     return "source";
   }
 
-  function startEditBinding(sourceId: number, slideType: string, sectionValue: string, existing?: FieldBinding) {
+  function isPillarNameSection(slideType: string, sectionValue: string): boolean {
+    return slideType === "title" && sectionValue === "pillar_name";
+  }
+
+  function startEditBinding(sourceId: number, slideType: string, sectionValue: string, sectionType: string, existing?: FieldBinding) {
+    // If it's pillar_name and no existing binding, auto-create fixed with pillar name
+    if (isPillarNameSection(slideType, sectionValue) && !existing && currentPillarName) {
+      if (!numericPillarId) { toast.error("No pillar selected."); return; }
+      upsertBinding.mutate({
+        pillarConfigId: numericPillarId,
+        slideType: slideType as any,
+        slideSection: sectionValue,
+        bindingStatus: "connected",
+        sourceField: "[Hardcoded]",
+        sourceFieldType: "string" as any,
+        slideSectionType: "string" as any,
+        dataSourceId: sourceId,
+        hardcodedValue: currentPillarName,
+      }, {
+        onSuccess: () => toast.success(`Pillar Name auto-filled with "${currentPillarName}".`),
+      });
+      return;
+    }
+
     setEditingBindings(prev => {
       const next = new Map(prev);
       const sourceEdits = new Map(next.get(sourceId) || new Map());
       const key = `${slideType}::${sectionValue}`;
+      const defaultMode = determineBindingMode(existing, sectionType);
       sourceEdits.set(key, {
-        sourceField: existing?.sourceField && existing.sourceField !== "\u2014" ? existing.sourceField : "",
-        sourceFieldType: existing?.sourceFieldType || "string",
+        sourceField: existing?.sourceField && !existing.sourceField.startsWith("[") ? existing.sourceField : "",
+        sourceFieldType: existing?.sourceFieldType || sectionType || "string",
         transformNotes: existing?.transformNotes || "",
         sourceReference: existing?.sourceReference || "",
         isDynamic: existing?.isDynamic || false,
         dynamicDateType: existing?.dynamicDateType || "generation_date",
         dynamicDateFormat: existing?.dynamicDateFormat || "",
-        hardcodedValue: existing?.hardcodedValue || "",
-        bindingMode: determineBindingMode(existing),
+        hardcodedValue: existing?.hardcodedValue || (isPillarNameSection(slideType, sectionValue) ? currentPillarName : ""),
+        bindingMode: defaultMode,
       });
       next.set(sourceId, sourceEdits);
       return next;
@@ -584,13 +634,24 @@ export default function DataSources() {
 
     const mode = editState.bindingMode;
 
+    if (mode === "skip") {
+      markNotRequired(slideType, sectionValue, sourceId);
+      cancelEditBinding(sourceId, slideType, sectionValue);
+      return;
+    }
+
     if (mode === "source" && !editState.sourceField.trim()) {
       toast.error("Source field name is required.");
       return;
     }
 
-    if (mode === "hardcoded" && !editState.hardcodedValue.trim()) {
-      toast.error("Hardcoded value is required.");
+    if (mode === "fixed" && !editState.hardcodedValue.trim()) {
+      toast.error("Fixed value is required.");
+      return;
+    }
+
+    if (mode === "free_text" && !editState.hardcodedValue.trim()) {
+      toast.error("Free text value is required.");
       return;
     }
 
@@ -601,16 +662,17 @@ export default function DataSources() {
       bindingStatus: "connected",
       sourceField: mode === "source" ? editState.sourceField.trim() :
                    mode === "dynamic" ? `[Dynamic: ${DYNAMIC_DATE_OPTIONS.find(d => d.value === editState.dynamicDateType)?.label || editState.dynamicDateType}]` :
-                   `[Hardcoded]`,
+                   mode === "free_text" ? "[Free Text]" :
+                   "[Hardcoded]",
       sourceFieldType: editState.sourceFieldType as any,
       slideSectionType: sectionType as any,
-      dataSourceId: mode === "source" ? sourceId : sourceId,
+      dataSourceId: sourceId,
       transformNotes: editState.transformNotes || undefined,
       sourceReference: editState.sourceReference || undefined,
       isDynamic: mode === "dynamic",
       dynamicDateType: mode === "dynamic" ? editState.dynamicDateType as any : undefined,
-      dynamicDateFormat: mode === "dynamic" && editState.dynamicDateType === "custom_format" ? editState.dynamicDateFormat : undefined,
-      hardcodedValue: mode === "hardcoded" ? editState.hardcodedValue : undefined,
+      dynamicDateFormat: mode === "dynamic" && (editState.dynamicDateType === "custom_format" || editState.dynamicDateType === "custom_interval") ? editState.dynamicDateFormat : undefined,
+      hardcodedValue: (mode === "fixed" || mode === "free_text") ? editState.hardcodedValue : undefined,
     }, {
       onSuccess: () => {
         toast.success("Binding saved.");
@@ -630,7 +692,7 @@ export default function DataSources() {
       slideSectionType: "string" as any,
       dataSourceId: sourceId,
     }, {
-      onSuccess: () => toast.success("Marked as not required."),
+      onSuccess: () => toast.success("Marked as skipped."),
     });
   }
 
@@ -645,7 +707,7 @@ export default function DataSources() {
 
   const isLoading = pillarsLoading || sourcesLoading;
 
-  // Inactivity timeout for edit dialogs
+  // Inactivity timeout
   const anyDialogOpen = addDialogOpen || editDialogOpen;
   const { showWarning, remainingSeconds, continueSession } = useInactivityTimeout({
     isActive: anyDialogOpen,
@@ -727,13 +789,13 @@ export default function DataSources() {
           </div>
         </div>
         <div className="space-y-2">
-          <Label>Google URL or File ID</Label>
-          <Input placeholder="https://docs.google.com/spreadsheets/d/... or file ID" value={gu} onChange={(e) => setGu(e.target.value)} />
+          <Label>Google URL or File ID <span className="text-destructive">*</span></Label>
+          <Input placeholder="Paste the full Google Docs/Sheets/Slides URL" value={gu} onChange={(e) => setGu(e.target.value)} />
         </div>
-        {st === "google_sheet" && (
+        {(st === "google_sheet") && (
           <div className="space-y-2">
             <Label>Sheet Tab (optional)</Label>
-            <Input placeholder="e.g., SF Main Expense Data" value={stab} onChange={(e) => setStab(e.target.value)} />
+            <Input placeholder="e.g., Sheet1, Budget Data" value={stab} onChange={(e) => setStab(e.target.value)} />
           </div>
         )}
         <div className="space-y-2">
@@ -771,7 +833,7 @@ export default function DataSources() {
             </Card>
             <Card className="p-4">
               <div className="text-2xl font-bold text-gray-400">{bindingStats.notRequired}</div>
-              <div className="text-xs text-muted-foreground">Not Required</div>
+              <div className="text-xs text-muted-foreground">Skipped</div>
             </Card>
             <Card className="p-4">
               <div className="text-2xl font-bold text-amber-600">{bindingStats.unbound}</div>
@@ -871,135 +933,164 @@ export default function DataSources() {
                             >
                               {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
                               <Link2 className="h-3.5 w-3.5" />
-                              Source Bindings
+                              Source Data Binding
                               {sourceBindingCount > 0 && (
                                 <span className="text-muted-foreground font-normal">({sourceBindingCount} connected)</span>
                               )}
                             </button>
                           </div>
 
-                          {/* Expanded bindings section */}
+                          {/* ═══ Expanded: Reference-style binding table ═══ */}
                           {isExpanded && (
-                            <div className="border-t bg-muted/20">
-                              <div className="px-4 py-3">
-                                <p className="text-xs text-muted-foreground mb-3">
-                                  Map fields from this source to MBR slide sections. Choose to connect from source, use a dynamic date, or set a hardcoded value.
-                                </p>
-                                <div className="space-y-2">
-                                  {Object.entries(SLIDE_SECTIONS).map(([slideType, slide]) => {
-                                    const slideSectionBindings = slide.sections.map(sec => {
-                                      const b = bindingMap.get(`${slideType}::${sec.value}`);
-                                      return { sec, binding: b, isThisSource: b?.dataSourceId === src.id };
-                                    });
-                                    const hasBindingsFromThisSource = slideSectionBindings.some(s => s.isThisSource);
+                            <div className="border-t bg-muted/10">
+                              {/* Table header */}
+                              <div className="bg-muted/40 border-b">
+                                <div className="grid grid-cols-[1fr_40px_1fr_auto] items-center px-4 py-2.5">
+                                  <div className="text-[11px] font-bold uppercase tracking-wider text-foreground">Source Field</div>
+                                  <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-center">Sync</div>
+                                  <div className="text-[11px] font-bold uppercase tracking-wider text-foreground">Slide Title / Section / Field</div>
+                                  <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-right w-[140px]">Actions</div>
+                                </div>
+                              </div>
 
-                                    return (
-                                      <div key={slideType} className="rounded-lg border bg-background">
-                                        <div className="px-3 py-2 flex items-center gap-2 text-xs">
-                                          <Presentation className="h-3.5 w-3.5 text-primary shrink-0" />
-                                          <span className="font-semibold">{slide.label}</span>
-                                          <span className="text-muted-foreground">({slide.sections.length} sections)</span>
-                                          {hasBindingsFromThisSource && (
-                                            <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[9px] ml-auto">
-                                              {slideSectionBindings.filter(s => s.isThisSource && s.binding?.bindingStatus === "connected").length} from this source
-                                            </Badge>
-                                          )}
-                                        </div>
-                                        <div className="border-t">
-                                          {slide.sections.map((sec, idx) => {
-                                            const binding = bindingMap.get(`${slideType}::${sec.value}`);
-                                            const isThisSource = binding?.dataSourceId === src.id;
-                                            const status: "connected" | "not_required" | "unbound" =
-                                              !binding ? "unbound" :
-                                              (binding.bindingStatus as any) === "not_required" ? "not_required" : "connected";
-                                            const editState = getEditState(src.id, slideType, sec.value);
-                                            const isEditing = !!editState;
+                              {/* Binding rows grouped by slide type */}
+                              <div>
+                                {Object.entries(SLIDE_SECTIONS).map(([slideType, slide]) => (
+                                  <div key={slideType}>
+                                    {/* Slide group header */}
+                                    <div className="px-4 py-1.5 bg-muted/20 border-b flex items-center gap-2">
+                                      <Presentation className="h-3 w-3 text-primary" />
+                                      <span className="text-[10px] font-semibold text-primary uppercase tracking-wide">{slide.label}</span>
+                                      <span className="text-[10px] text-muted-foreground">({slide.sections.length})</span>
+                                    </div>
 
-                                            return (
-                                              <div key={sec.value} className={`px-3 py-2.5 ${idx < slide.sections.length - 1 ? "border-b" : ""} ${
-                                                isEditing ? "bg-blue-50/50 dark:bg-blue-950/20" :
-                                                isThisSource && status === "connected" ? "bg-emerald-50/30 dark:bg-emerald-950/10" :
-                                                status === "not_required" && isThisSource ? "bg-gray-50/50 dark:bg-gray-900/10" :
-                                                ""
-                                              }`}>
-                                                {isEditing ? (
-                                                  <BindingEditForm
-                                                    editState={editState}
-                                                    sec={sec}
-                                                    slideType={slideType}
-                                                    sourceId={src.id}
-                                                    sourceType={src.sourceType}
-                                                    onUpdate={updateEditBinding}
-                                                    onSave={() => saveBinding(src.id, slideType, sec.value, sec.type)}
-                                                    onCancel={() => cancelEditBinding(src.id, slideType, sec.value)}
-                                                    isSaving={upsertBinding.isPending}
-                                                  />
+                                    {slide.sections.map((sec, idx) => {
+                                      const binding = bindingMap.get(`${slideType}::${sec.value}`);
+                                      const isThisSource = binding?.dataSourceId === src.id;
+                                      const status: "connected" | "not_required" | "unbound" =
+                                        !binding ? "unbound" :
+                                        (binding.bindingStatus as any) === "not_required" ? "not_required" : "connected";
+                                      const editState = getEditState(src.id, slideType, sec.value);
+                                      const isEditing = !!editState;
+                                      const isPillarAuto = isPillarNameSection(slideType, sec.value);
+
+                                      return (
+                                        <div key={sec.value} className={`border-b last:border-b-0 ${
+                                          isEditing ? "bg-blue-50/60 dark:bg-blue-950/20" :
+                                          isThisSource && status === "connected" ? "" :
+                                          ""
+                                        }`}>
+                                          {isEditing ? (
+                                            /* ─── Inline Edit Mode ─── */
+                                            <div className="px-4 py-3">
+                                              <BindingEditForm
+                                                editState={editState}
+                                                sec={sec}
+                                                slideType={slideType}
+                                                sourceId={src.id}
+                                                sourceType={src.sourceType}
+                                                pillarName={currentPillarName}
+                                                onUpdate={updateEditBinding}
+                                                onSave={() => saveBinding(src.id, slideType, sec.value, sec.type)}
+                                                onCancel={() => cancelEditBinding(src.id, slideType, sec.value)}
+                                                isSaving={upsertBinding.isPending}
+                                              />
+                                            </div>
+                                          ) : (
+                                            /* ─── View Row: Source Field → Slide Target ─── */
+                                            <div className="grid grid-cols-[1fr_40px_1fr_auto] items-center px-4 py-2.5 hover:bg-muted/20 transition-colors">
+                                              {/* LEFT: Source Field */}
+                                              <div className="min-w-0">
+                                                {isThisSource && status === "connected" && binding ? (
+                                                  <SourceFieldDisplay binding={binding} />
+                                                ) : status === "not_required" && isThisSource ? (
+                                                  <div className="flex items-center gap-1.5">
+                                                    <Ban className="h-3.5 w-3.5 text-gray-400" />
+                                                    <span className="text-xs text-gray-400 italic">Skipped</span>
+                                                  </div>
+                                                ) : binding && !isThisSource ? (
+                                                  <div className="flex items-center gap-1.5">
+                                                    <span className="text-xs text-muted-foreground italic truncate">
+                                                      {getSourceName(binding.dataSourceId) || "Other source"}
+                                                    </span>
+                                                  </div>
                                                 ) : (
-                                                  /* ─── View Mode ─── */
-                                                  <div className="flex items-center gap-3">
-                                                    <div className="min-w-[160px]">
-                                                      <div className="text-xs font-medium text-foreground">{sec.label}</div>
-                                                      <div className="text-[10px] text-muted-foreground">Type: {sec.type}</div>
-                                                    </div>
-                                                    <div className="min-w-[90px]">
-                                                      <StatusBadge status={isThisSource ? status : (binding ? "connected" : "unbound")} />
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                      {isThisSource && status === "connected" && binding ? (
-                                                        <BindingViewInfo binding={binding} />
-                                                      ) : isThisSource && status === "not_required" ? (
-                                                        <span className="text-[10px] text-muted-foreground italic">Skipped \u2014 not needed</span>
-                                                      ) : binding && !isThisSource ? (
-                                                        <span className="text-[10px] text-muted-foreground italic">
-                                                          Bound to: {getSourceName(binding.dataSourceId) || "another source"}
-                                                        </span>
-                                                      ) : (
-                                                        <span className="text-[10px] text-amber-600 italic">No source connected</span>
-                                                      )}
-                                                    </div>
-                                                    <div className="flex items-center gap-1 shrink-0">
-                                                      {isThisSource && status === "connected" ? (
-                                                        <>
-                                                          <Button variant="ghost" size="sm" className="h-6 text-[10px] gap-0.5 px-1.5" onClick={() => startEditBinding(src.id, slideType, sec.value, binding)}>
-                                                            <Pencil className="h-3 w-3" /> Edit
-                                                          </Button>
-                                                          <Button variant="ghost" size="sm" className="h-6 text-[10px] text-destructive hover:text-destructive gap-0.5 px-1.5" onClick={() => clearBinding(slideType, sec.value)}>
-                                                            <X className="h-3 w-3" /> Clear
-                                                          </Button>
-                                                        </>
-                                                      ) : isThisSource && status === "not_required" ? (
-                                                        <>
-                                                          <Button variant="ghost" size="sm" className="h-6 text-[10px] gap-0.5 px-1.5" onClick={() => startEditBinding(src.id, slideType, sec.value)}>
-                                                            <Link2 className="h-3 w-3" /> Connect
-                                                          </Button>
-                                                          <Button variant="ghost" size="sm" className="h-6 text-[10px] text-destructive hover:text-destructive gap-0.5 px-1.5" onClick={() => clearBinding(slideType, sec.value)}>
-                                                            <X className="h-3 w-3" /> Clear
-                                                          </Button>
-                                                        </>
-                                                      ) : !binding ? (
-                                                        <>
-                                                          <Button variant="outline" size="sm" className="h-6 text-[10px] gap-0.5 px-1.5" onClick={() => startEditBinding(src.id, slideType, sec.value)}>
-                                                            <Link2 className="h-3 w-3" /> Connect
-                                                          </Button>
-                                                          <Button variant="ghost" size="sm" className="h-6 text-[10px] text-muted-foreground gap-0.5 px-1.5" onClick={() => markNotRequired(slideType, sec.value, src.id)}>
-                                                            <Ban className="h-3 w-3" /> Skip
-                                                          </Button>
-                                                        </>
-                                                      ) : (
-                                                        <span className="text-[10px] text-muted-foreground italic">Other source</span>
-                                                      )}
-                                                    </div>
+                                                  <div className="flex items-center gap-1.5">
+                                                    <CircleDashed className="h-3.5 w-3.5 text-amber-500" />
+                                                    <span className="text-xs text-amber-600 italic">Not configured</span>
+                                                    {isPillarAuto && (
+                                                      <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-[8px]">Auto</Badge>
+                                                    )}
                                                   </div>
                                                 )}
                                               </div>
-                                            );
-                                          })}
+
+                                              {/* CENTER: Arrow */}
+                                              <div className="flex justify-center">
+                                                <ArrowRight className={`h-3.5 w-3.5 ${
+                                                  isThisSource && status === "connected" ? "text-emerald-500" :
+                                                  status === "not_required" ? "text-gray-300" :
+                                                  "text-muted-foreground/30"
+                                                }`} />
+                                              </div>
+
+                                              {/* RIGHT: Slide Target */}
+                                              <div className="min-w-0">
+                                                <div className="flex items-center gap-1.5">
+                                                  <span className="text-xs font-medium text-foreground">{sec.label}</span>
+                                                  <Badge variant="outline" className="text-[9px] shrink-0">{sec.type}</Badge>
+                                                </div>
+                                                <div className="text-[10px] text-muted-foreground mt-0.5">
+                                                  {slide.label} &rarr; {sec.label}
+                                                </div>
+                                              </div>
+
+                                              {/* ACTIONS: Configure · Delete */}
+                                              <div className="flex items-center gap-2 w-[140px] justify-end">
+                                                {isThisSource && (status === "connected" || status === "not_required") ? (
+                                                  <>
+                                                    <button
+                                                      className="text-[11px] font-medium text-primary hover:text-primary/80 hover:underline transition-colors"
+                                                      onClick={() => startEditBinding(src.id, slideType, sec.value, sec.type, binding)}
+                                                    >
+                                                      Configure
+                                                    </button>
+                                                    <span className="text-muted-foreground/40">·</span>
+                                                    <button
+                                                      className="text-[11px] font-medium text-destructive hover:text-destructive/80 hover:underline transition-colors"
+                                                      onClick={() => clearBinding(slideType, sec.value)}
+                                                    >
+                                                      Delete
+                                                    </button>
+                                                  </>
+                                                ) : !binding ? (
+                                                  <button
+                                                    className="text-[11px] font-medium text-primary hover:text-primary/80 hover:underline transition-colors"
+                                                    onClick={() => startEditBinding(src.id, slideType, sec.value, sec.type)}
+                                                  >
+                                                    Configure
+                                                  </button>
+                                                ) : (
+                                                  <span className="text-[10px] text-muted-foreground italic">Other source</span>
+                                                )}
+                                              </div>
+                                            </div>
+                                          )}
                                         </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
+                                      );
+                                    })}
+                                  </div>
+                                ))}
                               </div>
+
+                              {/* Bottom Save/Cancel bar (when any bindings are being edited) */}
+                              {(editingBindings.get(src.id)?.size ?? 0) > 0 && (
+                                <div className="bg-muted/30 border-t px-4 py-3 flex items-center justify-end gap-2">
+                                  <span className="text-xs text-muted-foreground mr-auto">
+                                    {editingBindings.get(src.id)?.size} binding(s) being configured
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           )}
                         </Card>
@@ -1105,7 +1196,66 @@ export default function DataSources() {
   );
 }
 
-// ─── Binding Edit Form (inline) ────────────────────────────────
+// ─── Source Field Display (left column in view mode) ──────────────
+
+function SourceFieldDisplay({ binding }: { binding: FieldBinding }) {
+  if (binding.isDynamic && binding.dynamicDateType) {
+    const dateLabel = DYNAMIC_DATE_OPTIONS.find(d => d.value === binding.dynamicDateType)?.label || binding.dynamicDateType;
+    return (
+      <div>
+        <div className="flex items-center gap-1.5">
+          <Calendar className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+          <span className="text-xs font-medium text-blue-700 dark:text-blue-400">{dateLabel}</span>
+        </div>
+        <div className="text-[10px] text-blue-500/70 mt-0.5">
+          Type: dynamic date
+          {binding.dynamicDateFormat && <> &middot; Format: {binding.dynamicDateFormat}</>}
+        </div>
+      </div>
+    );
+  }
+
+  if (binding.sourceField === "[Free Text]" && binding.hardcodedValue) {
+    return (
+      <div>
+        <div className="flex items-center gap-1.5">
+          <SquarePen className="h-3.5 w-3.5 text-orange-500 shrink-0" />
+          <span className="text-xs font-medium text-orange-700 dark:text-orange-400 truncate max-w-[250px]">{binding.hardcodedValue}</span>
+        </div>
+        <div className="text-[10px] text-orange-500/70 mt-0.5">Type: free text</div>
+      </div>
+    );
+  }
+
+  if (binding.sourceField === "[Hardcoded]" && binding.hardcodedValue) {
+    return (
+      <div>
+        <div className="flex items-center gap-1.5">
+          <Lock className="h-3.5 w-3.5 text-purple-500 shrink-0" />
+          <span className="text-xs font-medium text-purple-700 dark:text-purple-400 truncate max-w-[250px]">{binding.hardcodedValue}</span>
+        </div>
+        <div className="text-[10px] text-purple-500/70 mt-0.5">Type: fixed value</div>
+      </div>
+    );
+  }
+
+  // From source
+  return (
+    <div>
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs font-medium text-foreground truncate">{binding.sourceField}</span>
+        <Badge variant="outline" className="text-[8px] shrink-0">{binding.sourceFieldType}</Badge>
+      </div>
+      <div className="text-[10px] text-muted-foreground mt-0.5">
+        Type: {binding.sourceFieldType}
+        {binding.sourceReference && <> &middot; Ref: {binding.sourceReference}</>}
+        {binding.transformNotes && <> &middot; {binding.transformNotes}</>}
+      </div>
+    </div>
+  );
+}
+
+// ─── Binding Edit Form (inline, reference-style) ─────────────────
 
 function BindingEditForm({
   editState,
@@ -1113,6 +1263,7 @@ function BindingEditForm({
   slideType,
   sourceId,
   sourceType,
+  pillarName,
   onUpdate,
   onSave,
   onCancel,
@@ -1123,21 +1274,21 @@ function BindingEditForm({
   slideType: string;
   sourceId: number;
   sourceType: string;
+  pillarName: string;
   onUpdate: (sourceId: number, slideType: string, sectionValue: string, field: string, value: any) => void;
   onSave: () => void;
   onCancel: () => void;
   isSaving: boolean;
 }) {
-  const showDynamic = isDateType(sec.type);
-  const showHardcoded = isHardcodableType(sec.type);
+  const availableModes = getAvailableModes(sec.type);
 
-  // Fetch sheet columns when source is a Google Sheet
+  // Fetch sheet columns
   const sheetColumnsQuery = trpc.dataSources.sheetColumns.useQuery(
     { dataSourceId: sourceId },
     { enabled: sourceType === "google_sheet" && editState.bindingMode === "source" }
   );
 
-  // Fetch doc sections when source is a Google Doc
+  // Fetch doc sections
   const docSectionsQuery = trpc.dataSources.docSections.useQuery(
     { dataSourceId: sourceId },
     { enabled: sourceType === "google_doc" && editState.bindingMode === "source" }
@@ -1147,59 +1298,60 @@ function BindingEditForm({
   const docSections = docSectionsQuery.data?.sections || [];
   const isLoadingSuggestions = sheetColumnsQuery.isLoading || docSectionsQuery.isLoading;
 
-  // Determine available binding modes
-  const modes: { value: string; label: string; icon: typeof Link2; description: string }[] = [
-    { value: "source", label: "From Source", icon: Link2, description: "Pull value from the data source" },
-  ];
-  if (showDynamic) {
-    modes.push({ value: "dynamic", label: "Dynamic Date", icon: Calendar, description: "Auto-generate date at deck creation time" });
-  }
-  if (showHardcoded) {
-    modes.push({ value: "hardcoded", label: "Fixed Value", icon: Lock, description: "Use a constant value for all generations" });
-  }
+  const modeConfig = BINDING_MODE_CONFIG[editState.bindingMode];
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <span className="text-xs font-medium text-foreground">{sec.label}</span>
+      {/* Target info */}
+      <div className="flex items-center gap-2 pb-2 border-b border-border/50">
+        <Presentation className="h-4 w-4 text-primary" />
+        <span className="text-sm font-semibold text-foreground">{sec.label}</span>
         <Badge variant="outline" className="text-[9px]">{sec.type}</Badge>
+        <ArrowRight className="h-3 w-3 text-muted-foreground mx-1" />
+        <span className="text-xs text-muted-foreground">{SLIDE_TYPE_LABELS[slideType] || slideType}</span>
       </div>
 
-      {/* Binding Mode Selector — only show if multiple modes available */}
-      {modes.length > 1 && (
-        <div className="flex gap-1.5">
-          {modes.map((mode) => {
-            const ModeIcon = mode.icon;
-            const isActive = editState.bindingMode === mode.value;
+      {/* Mode selector — pill buttons */}
+      <div>
+        <Label className="text-[10px] text-muted-foreground mb-1.5 block">Binding Mode</Label>
+        <div className="flex gap-1.5 flex-wrap">
+          {availableModes.map((mode) => {
+            const cfg = BINDING_MODE_CONFIG[mode];
+            const ModeIcon = cfg.icon;
+            const isActive = editState.bindingMode === mode;
             return (
-              <TooltipProvider key={mode.value}>
+              <TooltipProvider key={mode}>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-colors border ${
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-all border ${
                         isActive
-                          ? "bg-primary text-primary-foreground border-primary"
+                          ? "bg-primary text-primary-foreground border-primary shadow-sm"
                           : "bg-background text-muted-foreground border-border hover:bg-accent hover:text-accent-foreground"
                       }`}
-                      onClick={() => onUpdate(sourceId, slideType, sec.value, "bindingMode", mode.value)}
+                      onClick={() => onUpdate(sourceId, slideType, sec.value, "bindingMode", mode)}
                     >
-                      <ModeIcon className="h-3 w-3" />
-                      {mode.label}
+                      <ModeIcon className="h-3.5 w-3.5" />
+                      {cfg.label}
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent side="bottom" className="text-xs">
-                    {mode.description}
+                  <TooltipContent side="bottom" className="text-xs max-w-[200px]">
+                    {cfg.description}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             );
           })}
         </div>
-      )}
+      </div>
 
       {/* ─── Source Mode ─── */}
       {editState.bindingMode === "source" && (
-        <div className="space-y-2">
+        <div className={`space-y-2.5 rounded-lg border p-3 ${BINDING_MODE_CONFIG.source.bgClass}`}>
+          <div className="flex items-center gap-2 mb-1">
+            <Link2 className="h-3.5 w-3.5 text-emerald-600" />
+            <span className="text-xs font-medium text-emerald-800 dark:text-emerald-300">Map from data source</span>
+          </div>
           <div className="grid grid-cols-3 gap-2">
             <div>
               <Label className="text-[10px] text-muted-foreground">Source Field *</Label>
@@ -1207,11 +1359,7 @@ function BindingEditForm({
                 <Select
                   value={editState.sourceField || "___custom___"}
                   onValueChange={(v) => {
-                    if (v === "___custom___") {
-                      onUpdate(sourceId, slideType, sec.value, "sourceField", "");
-                    } else {
-                      onUpdate(sourceId, slideType, sec.value, "sourceField", v);
-                    }
+                    onUpdate(sourceId, slideType, sec.value, "sourceField", v === "___custom___" ? "" : v);
                   }}
                 >
                   <SelectTrigger className="h-7 text-xs">
@@ -1228,19 +1376,15 @@ function BindingEditForm({
                 <Select
                   value={editState.sourceField || "___custom___"}
                   onValueChange={(v) => {
-                    if (v === "___custom___") {
-                      onUpdate(sourceId, slideType, sec.value, "sourceField", "");
-                    } else {
-                      onUpdate(sourceId, slideType, sec.value, "sourceField", v);
-                    }
+                    onUpdate(sourceId, slideType, sec.value, "sourceField", v === "___custom___" ? "" : v);
                   }}
                 >
                   <SelectTrigger className="h-7 text-xs">
                     <SelectValue placeholder="Select section..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {docSections.map((sec) => (
-                      <SelectItem key={sec} value={sec}>{sec}</SelectItem>
+                    {docSections.map((s) => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
                     ))}
                     <SelectItem value="___custom___">Custom field name...</SelectItem>
                   </SelectContent>
@@ -1254,7 +1398,6 @@ function BindingEditForm({
                   autoFocus
                 />
               )}
-              {/* Show custom input if "Custom" was selected from dropdown */}
               {((sourceType === "google_sheet" && columns.length > 0) || (sourceType === "google_doc" && docSections.length > 0)) && !editState.sourceField && (
                 <Input
                   className="h-7 text-xs mt-1"
@@ -1288,7 +1431,7 @@ function BindingEditForm({
             </div>
           </div>
           <div>
-            <Label className="text-[10px] text-muted-foreground">Transform Notes</Label>
+            <Label className="text-[10px] text-muted-foreground">Transform Notes (optional)</Label>
             <Input
               className="h-7 text-xs"
               placeholder="e.g., Sum column values, format as currency..."
@@ -1307,153 +1450,124 @@ function BindingEditForm({
 
       {/* ─── Dynamic Date Mode ─── */}
       {editState.bindingMode === "dynamic" && (
-        <div className="space-y-2">
-          <div className="rounded-md border border-blue-200 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-800 p-3">
-            <div className="flex items-center gap-2 mb-2">
-              <Zap className="h-3.5 w-3.5 text-blue-600" />
-              <span className="text-xs font-medium text-blue-800 dark:text-blue-300">Dynamic Date</span>
-              <span className="text-[10px] text-blue-600 dark:text-blue-400">Auto-generated when deck is created</span>
-            </div>
-            <Select
-              value={editState.dynamicDateType}
-              onValueChange={(v) => onUpdate(sourceId, slideType, sec.value, "dynamicDateType", v)}
-            >
-              <SelectTrigger className="h-8 text-xs bg-white dark:bg-background">
-                <SelectValue placeholder="Select date type..." />
-              </SelectTrigger>
-              <SelectContent>
-                {DYNAMIC_DATE_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    <div className="flex items-center gap-2">
-                      <span>{opt.label}</span>
-                      <span className="text-muted-foreground text-[10px]">{opt.preview}</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {editState.dynamicDateType === "custom_format" && (
-              <div className="mt-2">
-                <Label className="text-[10px] text-muted-foreground">Custom Format String</Label>
-                <Input
-                  className="h-7 text-xs bg-white dark:bg-background"
-                  placeholder="e.g., MMMM yyyy, MM/dd/yyyy"
-                  value={editState.dynamicDateFormat}
-                  onChange={(e) => onUpdate(sourceId, slideType, sec.value, "dynamicDateFormat", e.target.value)}
-                />
-                <p className="text-[9px] text-muted-foreground mt-1">
-                  MMMM = full month, MMM = short month, yyyy = year, dd = day, Q = quarter
-                </p>
-              </div>
-            )}
+        <div className={`rounded-lg border p-3 ${BINDING_MODE_CONFIG.dynamic.bgClass}`}>
+          <div className="flex items-center gap-2 mb-2">
+            <Calendar className="h-3.5 w-3.5 text-blue-600" />
+            <span className="text-xs font-medium text-blue-800 dark:text-blue-300">Dynamic Date</span>
+            <span className="text-[10px] text-blue-600 dark:text-blue-400">Auto-generated at deck creation</span>
           </div>
+          <Select
+            value={editState.dynamicDateType}
+            onValueChange={(v) => onUpdate(sourceId, slideType, sec.value, "dynamicDateType", v)}
+          >
+            <SelectTrigger className="h-8 text-xs bg-white dark:bg-background">
+              <SelectValue placeholder="Select date type..." />
+            </SelectTrigger>
+            <SelectContent>
+              {DYNAMIC_DATE_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  <div className="flex items-center gap-2">
+                    <span>{opt.label}</span>
+                    <span className="text-muted-foreground text-[10px]">{opt.preview}</span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {(editState.dynamicDateType === "custom_format" || editState.dynamicDateType === "custom_interval") && (
+            <div className="mt-2">
+              <Label className="text-[10px] text-muted-foreground">
+                {editState.dynamicDateType === "custom_interval" ? "Interval Pattern" : "Custom Format String"}
+              </Label>
+              <Input
+                className="h-7 text-xs bg-white dark:bg-background"
+                placeholder={editState.dynamicDateType === "custom_interval" ? "e.g., Jan-Mar {YYYY}, Week {W}" : "e.g., MMMM yyyy, MM/dd/yyyy"}
+                value={editState.dynamicDateFormat}
+                onChange={(e) => onUpdate(sourceId, slideType, sec.value, "dynamicDateFormat", e.target.value)}
+              />
+              <p className="text-[9px] text-muted-foreground mt-1">
+                {editState.dynamicDateType === "custom_interval"
+                  ? "Use {YYYY} for year, {MM} for month, {Q} for quarter, {W} for week number"
+                  : "MMMM = full month, MMM = short month, yyyy = year, dd = day, Q = quarter"
+                }
+              </p>
+            </div>
+          )}
         </div>
       )}
 
-      {/* ─── Hardcoded Value Mode ─── */}
-      {editState.bindingMode === "hardcoded" && (
-        <div className="space-y-2">
-          <div className="rounded-md border border-purple-200 bg-purple-50/50 dark:bg-purple-950/20 dark:border-purple-800 p-3">
-            <div className="flex items-center gap-2 mb-2">
-              <Lock className="h-3.5 w-3.5 text-purple-600" />
-              <span className="text-xs font-medium text-purple-800 dark:text-purple-300">Fixed Value</span>
-              <span className="text-[10px] text-purple-600 dark:text-purple-400">Same value used in every Autopilot generation</span>
-            </div>
-            {sec.type === "currency" || sec.type === "number" ? (
-              <Input
-                className="h-8 text-xs bg-white dark:bg-background"
-                type="text"
-                placeholder={sec.type === "currency" ? "e.g., $1,250,000" : "e.g., 42"}
-                value={editState.hardcodedValue}
-                onChange={(e) => onUpdate(sourceId, slideType, sec.value, "hardcodedValue", e.target.value)}
-                autoFocus
-              />
-            ) : (
-              <Textarea
-                className="text-xs bg-white dark:bg-background min-h-[60px] resize-none"
-                placeholder="Enter the fixed value to use..."
-                value={editState.hardcodedValue}
-                onChange={(e) => onUpdate(sourceId, slideType, sec.value, "hardcodedValue", e.target.value)}
-                autoFocus
-              />
-            )}
+      {/* ─── Fixed Value Mode ─── */}
+      {editState.bindingMode === "fixed" && (
+        <div className={`rounded-lg border p-3 ${BINDING_MODE_CONFIG.fixed.bgClass}`}>
+          <div className="flex items-center gap-2 mb-2">
+            <Lock className="h-3.5 w-3.5 text-purple-600" />
+            <span className="text-xs font-medium text-purple-800 dark:text-purple-300">Fixed Value</span>
+            <span className="text-[10px] text-purple-600 dark:text-purple-400">Same value every Autopilot run</span>
           </div>
+          {sec.type === "currency" || sec.type === "number" ? (
+            <Input
+              className="h-8 text-xs bg-white dark:bg-background"
+              type="text"
+              placeholder={sec.type === "currency" ? "e.g., $1,250,000" : "e.g., 42"}
+              value={editState.hardcodedValue}
+              onChange={(e) => onUpdate(sourceId, slideType, sec.value, "hardcodedValue", e.target.value)}
+              autoFocus
+            />
+          ) : (
+            <Textarea
+              className="text-xs bg-white dark:bg-background min-h-[60px] resize-none"
+              placeholder="Enter the fixed value to use..."
+              value={editState.hardcodedValue}
+              onChange={(e) => onUpdate(sourceId, slideType, sec.value, "hardcodedValue", e.target.value)}
+              autoFocus
+            />
+          )}
+        </div>
+      )}
+
+      {/* ─── Free Text Mode ─── */}
+      {editState.bindingMode === "free_text" && (
+        <div className={`rounded-lg border p-3 ${BINDING_MODE_CONFIG.free_text.bgClass}`}>
+          <div className="flex items-center gap-2 mb-2">
+            <SquarePen className="h-3.5 w-3.5 text-orange-600" />
+            <span className="text-xs font-medium text-orange-800 dark:text-orange-300">Free Text</span>
+            <span className="text-[10px] text-orange-600 dark:text-orange-400">Custom text for this slide field</span>
+          </div>
+          <Textarea
+            className="text-xs bg-white dark:bg-background min-h-[80px] resize-y"
+            placeholder="Enter custom text content for this field..."
+            value={editState.hardcodedValue}
+            onChange={(e) => onUpdate(sourceId, slideType, sec.value, "hardcodedValue", e.target.value)}
+            autoFocus
+          />
+          <p className="text-[9px] text-orange-600/60 mt-1">
+            This text will be placed directly into the slide. Supports multi-line content.
+          </p>
+        </div>
+      )}
+
+      {/* ─── Skip Mode ─── */}
+      {editState.bindingMode === "skip" && (
+        <div className={`rounded-lg border p-3 ${BINDING_MODE_CONFIG.skip.bgClass}`}>
+          <div className="flex items-center gap-2">
+            <Ban className="h-3.5 w-3.5 text-gray-500" />
+            <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Skip this field</span>
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Autopilot will leave this field empty or use the template default. The slide section will not be populated.
+          </p>
         </div>
       )}
 
       {/* ─── Save / Cancel ─── */}
-      <div className="flex items-center gap-2 pt-1">
-        <Button size="sm" className="h-6 text-xs gap-1 px-2.5" onClick={onSave} disabled={isSaving}>
+      <div className="flex items-center gap-2 pt-1 border-t border-border/30">
+        <Button size="sm" className="h-7 text-xs gap-1 px-3" onClick={onSave} disabled={isSaving}>
           {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} Save
         </Button>
-        <Button variant="outline" size="sm" className="h-6 text-xs gap-1 px-2.5" onClick={onCancel}>
-          <X className="h-3 w-3" /> Cancel
+        <Button variant="outline" size="sm" className="h-7 text-xs gap-1 px-3" onClick={onCancel}>
+          Cancel
         </Button>
       </div>
     </div>
-  );
-}
-
-// ─── Binding View Info (shows dynamic/hardcoded/source details) ──
-
-function BindingViewInfo({ binding }: { binding: FieldBinding }) {
-  if (binding.isDynamic && binding.dynamicDateType) {
-    const dateLabel = DYNAMIC_DATE_OPTIONS.find(d => d.value === binding.dynamicDateType)?.label || binding.dynamicDateType;
-    return (
-      <div className="flex items-center gap-1.5">
-        <Zap className="h-3 w-3 text-blue-500 shrink-0" />
-        <span className="text-xs font-medium text-blue-700 dark:text-blue-400">Dynamic: {dateLabel}</span>
-        {binding.dynamicDateFormat && (
-          <span className="text-[10px] text-muted-foreground italic">({binding.dynamicDateFormat})</span>
-        )}
-      </div>
-    );
-  }
-
-  if (binding.hardcodedValue) {
-    return (
-      <div className="flex items-center gap-1.5">
-        <Lock className="h-3 w-3 text-purple-500 shrink-0" />
-        <span className="text-xs font-medium text-purple-700 dark:text-purple-400 truncate max-w-[200px]">
-          Fixed: {binding.hardcodedValue}
-        </span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex items-center gap-1.5">
-      <ArrowRight className="h-3 w-3 text-emerald-500 shrink-0" />
-      <span className="text-xs font-medium truncate">{binding.sourceField}</span>
-      <Badge variant="outline" className="text-[9px]">{binding.sourceFieldType}</Badge>
-      {binding.sourceReference && (
-        <span className="text-[10px] text-muted-foreground italic truncate">@ {binding.sourceReference}</span>
-      )}
-      {binding.transformNotes && <span className="text-[10px] text-muted-foreground italic truncate">{binding.transformNotes}</span>}
-    </div>
-  );
-}
-
-// ─── Sub-components ─────────────────────────────────────────────
-
-function StatusBadge({ status }: { status: "connected" | "not_required" | "unbound" }) {
-  if (status === "connected") {
-    return (
-      <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 gap-1 font-normal text-[10px]">
-        <Check className="h-3 w-3" /> Connected
-      </Badge>
-    );
-  }
-  if (status === "not_required") {
-    return (
-      <Badge className="bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 border-gray-200 dark:border-gray-700 gap-1 font-normal text-[10px]">
-        <Ban className="h-3 w-3" /> Not Required
-      </Badge>
-    );
-  }
-  return (
-    <Badge className="bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400 border-amber-200 dark:border-amber-800 gap-1 font-normal text-[10px]">
-      <CircleDashed className="h-3 w-3" /> Unbound
-    </Badge>
   );
 }

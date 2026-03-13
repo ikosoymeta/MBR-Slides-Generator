@@ -178,3 +178,15 @@
 - [x] UX: Improve binding edit layout to be more intuitive and easier to use
 - [x] UX: Fetch and suggest Google Sheet column names when connecting a binding to a sheet source
 - [x] UX: Add hardcoded value option for text/number fields for Autopilot deck generations
+- [x] UI: Two-column binding layout — Source (left) and Slide Deck target (right) columns
+- [x] UI: Auto-fill Pillar Name binding with the pillar name from the selected tab
+- [x] UI: Default date-type fields to Dynamic Date mode instead of From Source
+- [x] UI: Redesign binding section to table layout matching reference: Source Field (left) → arrow → Slide Title/Section/Field (right)
+- [x] UI: Add Configure and Delete actions per binding row (matching reference design)
+- [x] UI: Add Save/Cancel buttons at the bottom of the binding table
+- [x] UI: Clean table rows with clear column separation matching reference mockup
+- [x] UI: Every slide field must be mapped: source column, free text, or dynamic date
+- [x] UI: Date fields: add Q1/Q2/Q3/Q4 + Dynamic Year combination option
+- [x] UI: Date fields: add Custom Interval option alongside dynamic date
+- [x] UI: Free text entry option for any field type
+- [x] UI: Make binding system maximally configurable for fully autonomous Autopilot (zero manual intervention)
